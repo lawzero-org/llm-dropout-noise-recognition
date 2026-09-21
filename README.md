@@ -5,21 +5,21 @@
 
 <p align="center">
 <a href="https://arxiv.org/abs/2604.17465" target="_blank"><img src="https://img.shields.io/badge/paper-arXiv:2604.17465-B31B1B?logo=arxiv" alt="Paper"/></a>
-<a href="https://saifh-github.github.io/llm-dropout-noise-recognition/" target="_blank"><img src="https://img.shields.io/badge/blog-read%20post-blue" alt="Blog Post"/></a>
+<a href="https://lawzero-org.github.io/llm-dropout-noise-recognition/" target="_blank"><img src="https://img.shields.io/badge/blog-read%20post-blue" alt="Blog Post"/></a>
 </p>
 
 <p align="center">
-<a href="https://github.com/saifh-github/llm-dropout-noise-recognition/actions/workflows/code-checks.yaml"><img src="https://img.shields.io/github/actions/workflow/status/saifh-github/llm-dropout-noise-recognition/code-checks.yaml?label=code%20checks%20(ruff%20%26%20pyright)&logo=github" alt="Code Checks"/></a>
-<a href="https://github.com/saifh-github/llm-dropout-noise-recognition/actions/workflows/pytest.yaml"><img src="https://img.shields.io/github/actions/workflow/status/saifh-github/llm-dropout-noise-recognition/pytest.yaml?label=tests%20(pytest)&logo=github" alt="Pytest"/></a>
+<a href="https://github.com/lawzero-org/llm-dropout-noise-recognition/actions/workflows/code-checks.yaml"><img src="https://img.shields.io/github/actions/workflow/status/lawzero-org/llm-dropout-noise-recognition/code-checks.yaml?label=code%20checks%20(ruff%20%26%20pyright)&logo=github" alt="Code Checks"/></a>
+<a href="https://github.com/lawzero-org/llm-dropout-noise-recognition/actions/workflows/pytest.yaml"><img src="https://img.shields.io/github/actions/workflow/status/lawzero-org/llm-dropout-noise-recognition/pytest.yaml?label=tests%20(pytest)&logo=github" alt="Pytest"/></a>
 </p>
 
 <p align="center">
 <img src="https://img.shields.io/badge/python-%3E%3D3.12-blue?logo=python" alt="Python Version"/>
-<img src="https://img.shields.io/github/last-commit/saifh-github/llm-dropout-noise-recognition/main?label=repo%20latest%20update&logo=readthedocs" alt="Latest Repo Update"/>
+<img src="https://img.shields.io/github/last-commit/lawzero-org/llm-dropout-noise-recognition/main?label=repo%20latest%20update&logo=readthedocs" alt="Latest Repo Update"/>
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/github/license/saifh-github/llm-dropout-noise-recognition?cacheBust=1" alt="License"/>
+<img src="https://img.shields.io/github/license/lawzero-org/llm-dropout-noise-recognition?cacheBust=1" alt="License"/>
 </p>
 
 # SPE: Self-Perturbation Experiments for LLM Mechanistic Detection
