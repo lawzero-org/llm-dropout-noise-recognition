@@ -1,20 +1,33 @@
-"""Download all HF models used in sweeps."""
+"""Download the paper's models at the revisions pinned in ``src/spe/conf/model/*.yaml``.
+
+    HF_HOME=<cache> uv run python scripts/download_models.py            # every model config
+    HF_HOME=<cache> uv run python scripts/download_models.py qwen3_32b  # selected configs
+
+The OLMo pretraining checkpoints of the appendix (revisions ``stage1-step<N>``) are downloaded by
+``scripts/download_olmo_checkpoints.py``.
+"""
 
 import os
+import pathlib
+import sys
+
+import yaml
 
 os.environ["HF_HUB_OFFLINE"] = "0"
 
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download  # noqa: E402
 
-MODELS = [
-    "Qwen/Qwen3-14B",
-    "Qwen/Qwen3-32B",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "google/gemma-3-1b-it",
-    "allenai/Olmo-3.1-32B-Instruct",
-]
+CONF = pathlib.Path(__file__).resolve().parents[1] / "src/spe/conf/model"
 
-for model_id in MODELS:
-    print(f"Downloading model {model_id}...")
-    snapshot_download(model_id)
-    print(f"Done: {model_id}\n")
+
+def main() -> None:
+    names = sys.argv[1:] or sorted(p.stem for p in CONF.glob("*.yaml"))
+    for name in names:
+        cfg = yaml.safe_load((CONF / f"{name}.yaml").read_text())
+        print(f"Downloading {cfg['name']} @ {cfg.get('revision')} ({name})...")
+        snapshot_download(cfg["name"], revision=cfg.get("revision"))
+        print(f"Done: {name}\n")
+
+
+if __name__ == "__main__":
+    main()

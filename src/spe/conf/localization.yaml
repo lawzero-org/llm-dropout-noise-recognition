@@ -1,0 +1,16 @@
+defaults:
+  - prompts/system: empty
+  - prompts/turns: localization/main
+  - model: qwen3_32b
+  - perturbation: localization
+  - output: default
+  - wandb: default
+  - _self_
+
+experiment:
+  seed: auto  # hashed from the resolved config (incl. stage/replicate); pass an int to override
+  stage: null  # grid identity, e.g. coarse / fine: same strength in another stage -> other seed
+  replicate: 0  # bump for an independent repeat of the same experiment
+  num_samples: 1000
+  sentence_n_tokens: 15  # sentence generator length, used only when sentences_file is null (no paper run)
+  sentences_file: null

@@ -1,4 +1,4 @@
-"""E2E tests for ``spe-multiclass`` (binary classification) entrypoint.
+"""E2E tests for ``spe-classify`` (binary classification) entrypoint.
 
 Tests the full pipeline: config -> prompt construction -> hook creation ->
 (mocked) generation -> metric extraction -> result building, without
@@ -9,7 +9,7 @@ from collections import Counter
 
 from omegaconf import OmegaConf
 
-from spe.experiments.classification import run_multiclass
+from spe.experiments.classification import run_classification
 
 # ---------------------------------------------------------------------------
 # Config builder
@@ -17,20 +17,17 @@ from spe.experiments.classification import run_multiclass
 
 
 def _cfg(
+    sentences_file: str,
     num_samples: int = 4,
-    sentences_file: str | None = None,
     active_perturbations: list[str] | None = None,
     seed: int = 42,
 ):
     """Build a minimal resolved classification config."""
-    if sentences_file:
-        user_turn = (
-            "Process this sentence: {sentence}\n\n"
-            "Which perturbation was applied? "
-            "A) {option_a} B) {option_b}"
-        )
-    else:
-        user_turn = "Which perturbation was applied? A) {option_a} B) {option_b}"
+    user_turn = (
+        "Process this sentence: {sentence}\n\n"
+        "Which perturbation was applied? "
+        "A) {option_a} B) {option_b}"
+    )
 
     return OmegaConf.create(
         {
@@ -84,11 +81,11 @@ def _cfg(
 # ---------------------------------------------------------------------------
 
 
-def test_pipeline_runs(classification_mocks, tokenizer, fake_model):
+def test_pipeline_runs(classification_mocks, tokenizer, fake_model, sentences_file):
     """Smoke test: full classification pipeline completes and returns the
     right number of result rows."""
-    cfg = _cfg(num_samples=4)
-    metrics, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=4)
+    metrics, results = run_classification(cfg, fake_model, tokenizer)
 
     assert isinstance(metrics, dict)
     assert isinstance(results, list)
@@ -96,11 +93,13 @@ def test_pipeline_runs(classification_mocks, tokenizer, fake_model):
     assert len(results) == 4
 
 
-def test_result_row_structure(classification_mocks, tokenizer, fake_model):
+def test_result_row_structure(
+    classification_mocks, tokenizer, fake_model, sentences_file
+):
     """Each result row contains all letter-level, class-level, and
     derived metric keys."""
-    cfg = _cfg(num_samples=2)
-    _, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=2)
+    _, results = run_classification(cfg, fake_model, tokenizer)
     row = results[0]
 
     # Bookkeeping
@@ -152,11 +151,6 @@ def test_result_row_structure(classification_mocks, tokenizer, fake_model):
     assert "predicted_class_argmax" in row
     assert "ground_truth_letter" in row
 
-    # Logit lens
-    assert "logit_lens" in row
-    assert isinstance(row["logit_lens"], list)
-    assert "logit_lens_logit_diff_dropout_vs_noise" in row
-
     # Log prob of correct answer
     assert "primary_log_prob_correct" in row
     assert "aggregate_log_prob_correct" in row
@@ -166,20 +160,23 @@ def test_balanced_perturbation_assignment(
     classification_mocks,
     tokenizer,
     fake_model,
+    sentences_file,
 ):
     """Samples are split evenly across DROPOUT and NOISE."""
-    cfg = _cfg(num_samples=6)
-    _, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=6)
+    _, results = run_classification(cfg, fake_model, tokenizer)
 
     counts = Counter(r["perturbation"] for r in results)
     assert counts["DROPOUT"] == 3
     assert counts["NOISE"] == 3
 
 
-def test_option_order_varies(classification_mocks, tokenizer, fake_model):
+def test_option_order_varies(
+    classification_mocks, tokenizer, fake_model, sentences_file
+):
     """With enough samples, more than one option order is used."""
-    cfg = _cfg(num_samples=20)
-    _, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=20)
+    _, results = run_classification(cfg, fake_model, tokenizer)
 
     orders = {r["option_order"] for r in results}
     assert len(orders) > 1, "Expected multiple option orderings"
@@ -189,10 +186,11 @@ def test_active_perturbations_restriction(
     classification_mocks,
     tokenizer,
     fake_model,
+    sentences_file,
 ):
     """``active_perturbations`` restricts which classes are sampled."""
-    cfg = _cfg(num_samples=4, active_perturbations=["DROPOUT"])
-    _, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=4, active_perturbations=["DROPOUT"])
+    _, results = run_classification(cfg, fake_model, tokenizer)
 
     assert all(r["perturbation"] == "DROPOUT" for r in results)
 
@@ -205,8 +203,8 @@ def test_with_sentences(
 ):
     """Sentence-based mode records the sentence and computes substring
     token ranges."""
-    cfg = _cfg(num_samples=4, sentences_file=sentences_file)
-    _, results = run_multiclass(cfg, fake_model, tokenizer)
+    cfg = _cfg(sentences_file, num_samples=4)
+    _, results = run_classification(cfg, fake_model, tokenizer)
 
     assert len(results) == 4
     for r in results:

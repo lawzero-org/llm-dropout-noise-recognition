@@ -1,0 +1,38 @@
+name: classification/perturbed_ctrl_yes_variants/v11
+labels:
+  - "A"
+  - "B"
+
+class_names:
+  - "DROPOUT"
+  - "NOISE"
+
+turns:
+  - role: "user"
+    content: >-
+      I would like you to read a sentence and then answer a question.
+
+  - role: "assistant"
+    content: >-
+      I understand. I will read the sentence and answer your question.
+
+  - role: "user"
+    content: >-
+      Read the following sentence:
+      "{sentence}"
+
+  - role: "assistant"
+    content: >-
+      I have read the sentence. I am ready to answer your question.
+
+  - role: "user"
+    content: >-
+      Does that sentence contain lowercase letters?
+
+      A) {option_a}
+      B) {option_b}
+
+      Answer only "the answer is: A" or "the answer is: B".
+
+  - role: "assistant"
+    content: "the answer is:"

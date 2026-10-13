@@ -1,0 +1,16 @@
+# Layer ablation: one third of the 64 layers perturbed; strengths = the 11 bins of Table 1.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: olmo3_32b-layers-dropout
+metric: {name: accuracy_primary, goal: maximize}
+parameters:
+  model: {value: olmo3_32b}
+  experiment.stage: {value: layers}
+  experiment.num_samples: {value: 1000}
+  hydra_overrides:
+    values: [perturbation.first_layer=0 perturbation.last_layer=20, perturbation.first_layer=21 perturbation.last_layer=42, perturbation.first_layer=43 perturbation.last_layer=63]
+  experiment.sentences_file: {value: data/sentences/15tok.txt}
+  perturbation.target_perturbation: {value: DROPOUT}
+  perturbation.dropout_rate:
+    values: [0.26, 0.3, 0.34, 0.38, 0.42, 0.46, 0.5, 0.54, 0.58, 0.62, 0.66]

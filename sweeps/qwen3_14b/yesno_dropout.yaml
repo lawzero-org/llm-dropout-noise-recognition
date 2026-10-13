@@ -1,0 +1,30 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# Yes/no detection (range of Table 1): the dropout is always applied and the model is asked whether a perturbation was applied;
+# accuracy_primary is the recall P(model answers YES | perturbation), with the option order randomized. Strength 0 is
+# the no-perturbation baseline (the 'yes' rate on unperturbed sentences).
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: qwen3_14b-yesno-dropout
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_14b
+  experiment.stage:
+    value: yesno
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: classification/perturbed
+  perturbation.active_perturbations:
+    value: "[DROPOUT]"
+  perturbation.noise_std:
+    value: 0
+  aliases:
+    value: dropout_yes
+  perturbation.dropout_rate:
+    values: [0, 0.1, 0.136, 0.172, 0.208, 0.244, 0.28, 0.316, 0.352, 0.388, 0.424, 0.46]

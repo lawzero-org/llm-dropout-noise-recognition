@@ -1,0 +1,29 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# OLMo SFT stage, yes/no controls (questions whose answer is NO, YES or undetermined) at the 11 strengths of its OWN range (0.06, 0.64) (bounds.py on the
+# stage's localization sweeps), instead of the RLVR range of yesno_ctrl_stage_sft_dropout.yaml; the unperturbed run is in that sweep.
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: olmo-stage-sft-yesno-ctrl-dropout-own-range
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: olmo3_32b_instruct_sft
+  experiment.stage:
+    value: yesno_ctrl
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    values: [classification/perturbed_ctrl_no, classification/perturbed_ctrl_yes, classification/perturbed_ctrl_none]
+  perturbation.active_perturbations:
+    value: "[DROPOUT]"
+  perturbation.noise_std:
+    value: 0
+  aliases:
+    value: dropout_yes
+  perturbation.dropout_rate:
+    values: [0.06, 0.118, 0.176, 0.234, 0.292, 0.35, 0.408, 0.466, 0.524, 0.582, 0.64]

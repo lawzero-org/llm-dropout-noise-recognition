@@ -1,0 +1,10 @@
+# localization/main_variants/v07 reduced to the two sentences and its own question (prompt ablation of Sec. 4).
+name: localization/main_bare_variants/v07
+turns:
+- role: user
+  content: '{sentences_block}
+
+
+    Based on your introspection, which sentence had {target_perturbation_name} applied to its processing? {answer_instruction}'
+- role: assistant
+  content: 'the answer is:'

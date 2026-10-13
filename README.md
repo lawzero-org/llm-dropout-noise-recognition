@@ -1,11 +1,11 @@
 <p align="center">
-    <img src="./webpage/static/images/fig1.jpg"
-          alt="Overview: we perturb activations of a target sentence with dropout or Gaussian noise and ask the model to identify which perturbation was applied." width="100%"/>
+    <img src="./assets/fig1.jpg"
+          alt="Overview: we perturb activations of a target sentence with dropout or Gaussian noise and ask the model to identify which perturbation was applied." width="75%"/>
 </p>
 
 <p align="center">
 <a href="https://arxiv.org/abs/2604.17465" target="_blank"><img src="https://img.shields.io/badge/paper-arXiv:2604.17465-B31B1B?logo=arxiv" alt="Paper"/></a>
-<a href="https://lawzero-org.github.io/llm-dropout-noise-recognition/" target="_blank"><img src="https://img.shields.io/badge/blog-read%20post-blue" alt="Blog Post"/></a>
+<a href="https://lawzero-org.github.io/llm-dropout-noise-recognition/v2/" target="_blank"><img src="https://img.shields.io/badge/blog-read%20post-blue" alt="Blog Post"/></a>
 </p>
 
 <p align="center">
@@ -13,498 +13,190 @@
 <a href="https://github.com/lawzero-org/llm-dropout-noise-recognition/actions/workflows/pytest.yaml"><img src="https://img.shields.io/github/actions/workflow/status/lawzero-org/llm-dropout-noise-recognition/pytest.yaml?label=tests%20(pytest)&logo=github" alt="Pytest"/></a>
 </p>
 
-<p align="center">
-<img src="https://img.shields.io/badge/python-%3E%3D3.12-blue?logo=python" alt="Python Version"/>
-<img src="https://img.shields.io/github/last-commit/lawzero-org/llm-dropout-noise-recognition/main?label=repo%20latest%20update&logo=readthedocs" alt="Latest Repo Update"/>
-</p>
+# Language models recognize dropout and Gaussian noise applied to their activations
 
-<p align="center">
-<img src="https://img.shields.io/github/license/lawzero-org/llm-dropout-noise-recognition?cacheBust=1" alt="License"/>
-</p>
+Damiano Fornasiere\*, Mirko Bronzi\*, Spencer Kitts\*, Alessandro Palmas, Yoshua Bengio†, Oliver Richardson†
+(LawZero; \* equivalent contribution, † supervision)
 
-# SPE: Self-Perturbation Experiments for LLM Mechanistic Detection
+Code for the paper. Dropout or Gaussian noise is applied
+to the attention and MLP outputs of a model on the tokens of one sentence, through PyTorch forward hooks, and the
+model is asked about it in four tasks:
 
-Can large language models detect perturbations applied to their own internal activations? **SPE** is the experimental framework behind our paper investigating whether LLMs can introspect on mechanistic interventions (dropout, noise injection) applied during inference.
+| Task | Paper | Entry point | Hydra config |
+|---|---|---|---|
+| Localization: which of two sentences was perturbed | Sec. 4 | `spe-localize` | `localization` |
+| Detection: was a perturbation applied (Yes / No) | Sec. 5 | `spe-classify` | `classification` |
+| Zero-shot classification: dropout or noise | Sec. 6 | `spe-classify` | `classification` |
+| Few-shot classification: dropout or noise, after k labelled examples | Sec. 7 | `spe-icl` | `icl` |
 
-The toolkit provides three experiment paradigms -- classification, localization, and in-context learning -- each probing a different facet of internal state awareness, with full Hydra-based configuration for reproducible sweeps across models, perturbation strengths, prompt wordings, and more.
+This is the code of the second version of the paper; the code of the first version is at the tag
+[`v1`](https://github.com/lawzero-org/llm-dropout-noise-recognition/tree/v1).
 
----
-
-## Table of Contents
-
-- [Key Results](#key-results)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Experiments Overview](#experiments-overview)
-  - [Classification (`spe-multiclass`)](#1-classification-spe-multiclass)
-  - [Localization (`spe-localize`)](#2-localization-spe-localize)
-  - [In-Context Learning (`spe-icl`)](#3-in-context-learning-spe-icl)
-- [Configuration Reference](#configuration-reference)
-  - [Models](#models)
-  - [Perturbation Parameters](#perturbation-parameters)
-  - [Prompt Controls](#prompt-controls)
-  - [Length Of Perturbed Sentences](#length-of-perturbed-sentences)
-  - [Label Aliases](#label-aliases)
-  - [ICL-Specific Parameters](#icl-specific-parameters)
-  - [Localization-Specific Parameters](#localization-specific-parameters)
-- [Running Sweeps](#running-sweeps)
-- [Analysis Notebooks](#analysis-notebooks)
-- [Project Structure](#project-structure)
-- [Citation](#citation)
-- [License](#license)
-
----
-
-## Key Results
-
-Our experiments show that LLMs can:
-- **Localize** which sentence in a multi-sentence prompt was perturbed
-- **Classify** the type of perturbation (dropout vs. noise) applied to their activations in a forced-choice task
-- **Learn in-context** to associate perturbation types with arbitrary labels from a handful of teaching examples
-
-Control experiments (swapped labels, randomized labels, nonsense baselines, topic controls) confirm that models rely on the perturbation signal rather than superficial cues.
-
----
+The repository contains what the paper uses and nothing else: the experiment code, the configs and W&B sweeps of
+every run, and the notebooks and exporters that turn the runs into the paper's figures.
 
 ## Installation
 
-### Prerequisites
-
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Python | >= 3.12 | |
-| [uv](https://docs.astral.sh/uv/) | >= 0.4 | Recommended package manager |
-| CUDA | >= 11.8 | For GPU inference (strongly recommended) |
-| GPU VRAM | 16--80 GB | Depends on model size (see [Models](#models)) |
-
-You will also need:
-- A [Weights & Biases](https://wandb.ai) account for experiment tracking
-- A [Hugging Face](https://huggingface.co) account with access to gated models (Llama 3.1, Gemma 3)
-
-### Step 1: Clone the repository
-
 ```bash
-git clone https://github.com/lawzero/spe.git
-cd spe
-```
-
-### Step 2: Install with uv
-
-```bash
-# Create a virtual environment and install the package
-uv sync
-
-# Or install with dev dependencies (linting, testing, notebooks)
-uv sync --group dev
-```
-
-### Step 3: Configure Weights & Biases
-
-```bash
+uv sync                 # Python 3.12 (.python-version), exact versions from uv.lock; CUDA GPU for the experiments
+uv sync --group dev     # + tests, linters, JupyterLab
 wandb login
 ```
 
-### Step 4: Download models (optional)
+The paper's runs used torch 2.14 and transformers 5.17 (the versions in `uv.lock`).
 
-Models are downloaded automatically on first use via Hugging Face Hub. To pre-download all models used in the paper:
+The models (`src/spe/conf/model/`, each pinned to a revision) are downloaded on first use, or ahead of time with
+`HF_HOME=<cache> uv run python scripts/download_models.py`; the OLMo pretraining checkpoints of the appendix with
+`scripts/download_olmo_checkpoints.py`.
 
-```bash
-uv run python scripts/download_models.py
-```
+## Single runs
 
-### Step 5: Validate the installation
-
-```bash
-# Run a minimal experiment to verify GPU setup
-spe-multiclass experiment.num_samples=5
-```
-
----
-
-## Quick Start
-
-Run a single classification experiment with default settings (Qwen3-14B, 1000 samples, dropout vs. noise):
+Every parameter is a Hydra override:
 
 ```bash
-spe-multiclass
+uv run spe-localize model=llama3_8b perturbation.target_perturbation=NOISE perturbation.noise_std=0.02
+uv run spe-classify model=qwen3_32b perturbation.dropout_rate=0.3 aliases=foo_bar
+uv run spe-icl prompts.turns.num_pairs=3 prompts.turns.swap_labels=true
 ```
 
-Run a localization experiment with 15-token sentences:
+Runs log to your W&B account: project `llm-dropout-noise` under your default entity, or set
+`wandb.entity=<entity>` (or `WANDB_ENTITY`) and `wandb.project=<project>`. `wandb.enabled=false` runs without
+W&B and only prints the results.
+
+- Models: `gemma4_31b`, `llama3_8b`, `mistral_small_24b` (the `unsloth` copy of
+  Mistral-Small-3.2-24B-Instruct-2506), `olmo3_32b`, `qwen3_14b`, `qwen3_32b`, `qwen3_8_27b` (Qwen3.8-27B),
+  `seed_oss_36b`. OLMo training stages (Sec. 4.4 and the appendix): `olmo3_32b_instruct_base` (`allenai/Olmo-3-1125-32B`, the base
+  model of Olmo 3.1), `olmo3_32b_instruct_sft`, `olmo3_32b_instruct_dpo`, and `olmo3_32b` (the final RLVR model);
+  the pretraining checkpoints are `olmo3_32b_instruct_base` at revision `stage1-step<N>`.
+- Hook sites: the output of the attention and MLP sublayers before the residual addition; for models that normalize
+  the sublayer output before adding it (Gemma 4, OLMo 3) the output of that norm. For Qwen3.8-27B, "attention"
+  includes its linear-attention (Gated DeltaNet) layers, three of every four.
+- Prompts (`src/spe/conf/prompts/turns/`): `localization/main` and its ablations `main_noprime`, `main_bare`, the
+  five `localization/control_topic_*` controls, `classification/perturbed` (detection) and its controls
+  `classification/perturbed_ctrl_{no,yes,none}` (questions whose answer is No, Yes, or undetermined),
+  `classification/main`, `icl/main_zs`. Each has 20 wording
+  variants in `*_variants/`, sampled for each sample. There is no system prompt.
+- Label aliases (`src/spe/conf/aliases/`): `none` (DROPOUT / NOISE), `dropout_yes` / `noise_yes` (the options YES
+  and NO of detection, YES being the applied perturbation), and the control label pairs of Sec. 6 and 7.
+- Sentences: `data/sentences/<n>tok.txt`, WikiText-103 sentences of exactly n tokens for the Qwen3 tokenizer (the
+  paper uses 15 unless stated). The topic sentences of the localization controls (40 for each topic) are in the
+  `localization/control_topic_*` prompt configs. With `experiment.sentences_file=null`, sentences come from the
+  template generator `src/spe/sentence_generator.py` (`experiment.sentence_n_tokens` tokens).
+- `perturbation.first_layer` / `last_layer` restrict the hooks to a layer range; `perturbation.hook_target` to
+  `attn` or `mlp`.
+
+## From the paper to the code
+
+Every run of the paper belongs to a W&B sweep of the project `llm-dropout-noise`.
+The sweep files are `sweeps/<group>/<key>.yaml` for every group of the manifest: a model (the OLMo training stages
+included), `olmo_stages`, or `olmo_steps`; `notebooks/paper/sweeps.yaml` lists the W&B id of each. A key with a suffix (`_fine`, `_refill`)
+adds points to the sweep of the base key.
+
+| Paper | Sweep keys | Figures from | Figure files (`plots/` of the paper) |
+|---|---|---|---|
+| Sec. 4, Fig. 2 and 3; Table 1 | `loc_*`, `ctrl_*` | `0_localization.ipynb`; `scripts/bounds.py` (Table 1; `--exact-token` for the OLMo footnote) | `00_loc/` |
+| Sec. 4.4, OLMo post-training stages (Fig. 4) | `olmo_stages` (`stage_*`) | `export_olmo_tex.py` | `11_appendix/olmo/` |
+| Sec. 5, Fig. 5 and 6 | `yesno_*`, `yesno_ctrl_*` | `export_detection_tex.py` | `03_detection/` |
+| Sec. 6 | `zs_*` | `1_zero_shot.ipynb` | `01_zero_shot/` |
+| Sec. 7 | `iclzs_main`, `iclzs_swap`, `iclzs_ctrl` | `2_few_shot.ipynb` | `02_few_shots/` |
+| App.: alternative dropout | `loc_dropout`, `aiayn_dropout` | `0_localization.ipynb` | `11_appendix/localization/31_*` |
+| App.: remaining models, OLMo accuracy between labels, first controls | `loc_*`, `ctrl_*` | `0_localization.ipynb` | `11_appendix/localization/{04,10,11}_*` |
+| App.: prompt ablation | `noprime_*`, `bare_*` | `0_localization.ipynb` | `11_appendix/localization/{30,32}_*` |
+| App.: sentence lengths | `loc_*`, `toklen_*` | `0_localization.ipynb` | `11_appendix/localization/2*_token_count_*` |
+| App.: second controls (log-probabilities) | `scripts/logprob_runs.py` (32 runs, not a sweep) | `export_shortcut_tex.py` | `11_appendix/logprob/` |
+| App.: one third of the layers | `layers_*`, `loc_*` | `export_paper_figs.py` | `11_appendix/layer_ablation/` |
+| App.: detection of the OLMo training stages | `olmo_stages` (`yesno_stage_*`, `yesno_ctrl_stage_*`; on the ranges of each stage `yesno_own_stage_*`, `yesno_ctrl_own_stage_*`) | `export_detection_tex.py` | `03_detection/02_*` |
+| App.: ranges of the OLMo training stages (Table 3) | groups `olmo3_32b_instruct_{base,sft,dpo}` | `scripts/bounds.py`; `export_detection_tex.py --appendix-dir` | `11_appendix/detection/` |
+| App.: OLMo pretraining steps | `olmo_steps` (its `step*_ctrl_{dropout,noise}` sweeps back the second note; no figure) | `export_olmo_tex.py` | `11_appendix/olmo/` |
+| App.: zero-shot (control labels, all models, average, entropy) | `zs_*` | `1_zero_shot.ipynb` | `01_zero_shot/`, `11_appendix/zero_shot/` |
+| App.: few-shot (heatmaps, flipped labels, delta heatmaps) | `iclzs_*` | `2_few_shot.ipynb` | `02_few_shots/`, `11_appendix/few_shot/` |
+
+## Reproducing
+
+**Run a sweep.** Sweeps use the in-process agent `spe-sweep`, which loads the model once and then runs trials
+from the W&B queue. The sweep files name no entity, so `wandb sweep` creates the sweep under your default entity
+(or `--entity <entity>`) in the project of the file:
 
 ```bash
-spe-localize experiment.sentence_n_tokens=15
+wandb sweep sweeps/qwen3_32b/loc_dropout.yaml           # prints <entity>/<project>/<id>
+uv run spe-sweep --sweep-id <entity>/<project>/<id> --config-name localization --experiment localization
 ```
 
-Run an in-context learning experiment with 4 teaching pairs:
+(`--config-name classification --experiment multiclass` for `yesno_*` and `zs_*`, `--config-name icl --experiment icl` for
+`iclzs_*`.) On a Slurm cluster, `scripts/sweep_agents.sh` starts one agent per GPU of an array job. The 32 log-prob
+runs are standalone runs of `scripts/shortcut_analysis.py`: `scripts/logprob_runs.py` prints the Hydra overrides of
+each (8 models x {dropout, noise} x {p_min / sigma_min, midpoint of the Table 1 range}), and
+`sbatch --array=0-31 scripts/command_array.sh` runs line i as task i:
 
 ```bash
-spe-icl prompts.turns.num_pairs=4
+uv run python scripts/logprob_runs.py | while read -r args; do uv run python scripts/shortcut_analysis.py $args; done
 ```
 
-All three commands use [Hydra](https://hydra.cc) for configuration. Override any parameter with dot-notation.
+**Seeds.** `experiment.seed: auto` hashes the resolved config, so a run is reproduced by its config alone, and
+distinct experiments (model, prompt, strength, `experiment.stage`, ...) get distinct seeds.
+`scripts/check_seed_invariance.py` (a development tool) recomputes the seed of every grid point of every sweep, to
+check that a code change leaves the paper's runs reproducible.
 
----
-
-## Experiments Overview
-
-### 1. Classification (`spe-multiclass`)
-
-**Question:** *Can the model tell whether dropout or noise was applied to its activations?*
-
-A perturbation (dropout or noise) is applied to the model's activations during a single forward pass. The model is then asked to classify which perturbation type occurred in a 2-way forced choice (A or B).
-
-```
-[user]    "Two perturbation types will be applied... detect which one."
-[user]    "Introspect on what happened while processing: '{sentence}'"
-[assistant] "I am carefully introspecting..."
-[user]    "Which perturbation? A) DROPOUT  B) NOISE"
-[assistant] "the answer is:"  <-- logit extraction point
-```
-
-Key features:
-- Option order randomized per sample to prevent positional bias
-- 20 prompt wording variants sampled randomly per sample
-- 3 description alternatives per class (e.g., "random neuron dropping", "random neuron zeroing")
-- Label aliasing to test semantic independence (e.g., FOO/BAR instead of DROPOUT/NOISE)
-
-**Defaults:** Qwen3-14B, 1000 samples, 10% dropout rate, 0.01 noise std, 15-token sentences.
+**Figures.** The notebooks read the sweeps of the manifest through `notebooks/wandb_cache.py`: a sweep is loaded
+from `data/cache/<id>.pkl` if that file exists (no W&B needed), otherwise it is downloaded from W&B (entity:
+`WANDB_ENTITY` or your default) and cached there. The ids in `notebooks/paper/sweeps.yaml` are the authors'
+sweeps, whose runs are not public: to plot, run the sweeps yourself and replace the ids with yours (`bounds.py` and
+the exporters read the same manifest). They plot interactively and print the pgfplots code of each figure. To write all the figure files at once:
 
 ```bash
-# Single run with overrides
-spe-multiclass model=qwen3_32b perturbation.dropout_rate=0.2
+uv run python scripts/exporters/export_paper_figs.py     # writes plots/00_loc, 01_zero_shot, 02_few_shots, 11_appendix
+uv run python scripts/exporters/export_olmo_tex.py       # writes plots/11_appendix/olmo
+uv run python scripts/exporters/export_shortcut_tex.py   # writes plots/11_appendix/logprob
+uv run python scripts/exporters/export_detection_tex.py --out-dir plots/03_detection --appendix-dir plots/11_appendix/detection
 ```
 
----
+`export_paper_figs.py` runs the notebooks' own cells. The files are pgfplots code that the paper's LaTeX sources
+`\input` (they use the paper's `\model{...}` macros); `--paper <dir>` writes under another root, and `--check`
+compares with the files of an existing paper tree instead of writing.
 
-### 2. Localization (`spe-localize`)
+**Audits** (development tools, not needed to reproduce the paper; W&B project from `WANDB_ENTITY` /
+`WANDB_PROJECT`). `scripts/verify_runs.py` recomputes the metrics
+of finished runs from their logged samples;
+`scripts/check_icl_completeness.py` lists the grid points of a few-shot sweep without a finished run and writes
+refill sweeps for them.
 
-**Question:** *Can the model identify which sentence in a list was perturbed?*
+## Metrics
 
-Multiple sentences are presented. One receives the target perturbation; the others receive a background condition (nothing, or a different perturbation). The model must point to the correct sentence.
+Each run logs, among others:
 
-```
-[user]    "A perturbation was applied to one of these sentences..."
-[user]    "Sentence A: The old cat slept quietly on the warm mat.
-           Sentence B: The old cat slept quietly on the warm mat."
-[assistant] "I am carefully introspecting..."
-[user]    "Which sentence had the perturbation? A or B?"
-[assistant] "the answer is:"  <-- logit extraction point
-```
+| W&B key | Prediction |
+|---|---|
+| `accuracy_primary` | the argmax over the full vocabulary is exactly `" A"` or `" B"` (the paper's metric) |
+| `accuracy_aggregate` | the argmax is any variant of the letter (`" A"`, `"A"`, `" a"`, `"a"`) |
+| `accuracy_constrained_primary` | the larger of the logits of `" A"` and `" B"` (used for the bounds of OLMo in Table 1, its control curves in Fig. 3, and the ranges of its training stages, because OLMo answers "neither" at low strengths) |
+| `accuracy_constrained_aggregate` | the larger of the summed probabilities of the variants of each letter |
 
-Key features:
-- `same_sentence` mode (default): identical text in every position, isolating the perturbation signal from content
-- Configurable N-way forced choice (2, 3, 5+ sentences)
-- Topic-controlled sentences for content-difference controls (animals vs. cities, ocean vs. mountain, etc.)
-- Coin-flip and nonsense baselines
+Control runs (`control_topic_*` prompts) also log `content_accuracy_*`, the accuracy on the content question. In the
+detection runs and their controls the option scored as correct is always YES, so `accuracy_primary` is the frequency
+of the answer Yes.
+Runs log `metrics_version: 2`, which the notebooks check on load.
 
-**Defaults:** Qwen3-4B, 1000 samples, 2-way choice, 10% dropout, 9-token dynamic sentences.
-
-```bash
-# Different sentence length
-spe-localize experiment.sentence_n_tokens=15
-
-# Topic control experiment
-spe-localize prompts/turns=localization/control_topic_animals_cities
-```
-
----
-
-### 3. In-Context Learning (`spe-icl`)
-
-**Question:** *Can the model learn from labeled examples what each perturbation type "feels like"?*
-
-The model receives a few-shot teaching conversation where each example has a perturbation applied and is followed by its correct label. Then it must classify a new perturbed sentence.
+## Layout
 
 ```
-[system]   "Diagnose internal state. Output exactly 'A' or 'B'."
-[user]     "Two perturbation types: DROPOUT and NOISE..."
-[assistant] "Understood."
-[user]     "Pay close attention... '{teaching_sentence}'"     <-- DROPOUT applied
-[assistant] "That was A."
-[user]     "Pay close attention... '{teaching_sentence}'"     <-- NOISE applied
-[assistant] "That was B."
-  ... (more teaching pairs) ...
-[user]     "Now for the test... '{test_sentence}'"            <-- target perturbation
-[assistant] "I am carefully introspecting..."
-[user]     "Which describes what happened? A) DROPOUT  B) NOISE"
-[assistant] "the answer is:"                                  <-- logit extraction point
+src/spe/
+  entry_{localize,classification,icl,sweep}.py   console scripts
+  experiment_setup.py    config, seed, W&B init, model and data loading
+  experiments/           the three runners
+  evaluation/            metrics of each task
+  hooks.py               dropout and noise hooks on the attention and MLP outputs
+  aiayn_hooks.py         dropout at the positions of Vaswani et al. (appendix)
+  generation.py          one forward pass, logits of the answer letters
+  prompt_utils.py, sentence_utils.py, sentence_generator.py, model_utils.py, wandb_utils.py, core.py
+  conf/                  Hydra configs
+sweeps/                  the paper's sweeps
+notebooks/paper/         the three figure notebooks and the sweep manifest
+scripts/                 launchers, exporters, checks
+data/sentences/          sentence files
+tests/                   CPU tests (uv run pytest; downloads the tokenizer of
+                         Qwen/Qwen3-4B-Instruct-2507 from the Hugging Face Hub on first run)
+assets/                  README figure
 ```
-
-Key features:
-- Configurable number of teaching pairs (1--4+)
-- Sentence reuse controls: all same, same within pair, or all unique
-- Control conditions: swapped labels, empty teaching, random labels
-- Supports 2-class and 3-class variants
-
-**Defaults:** Qwen3-32B, 400 samples, 2 teaching pairs, 30% dropout, 0.03 noise std, 15-token sentences.
-
-```bash
-# More teaching examples
-spe-icl prompts.turns.num_pairs=4
-
-# Control condition: labels are deliberately swapped
-spe-icl prompts.turns.swap_labels=true
-```
-
----
-
-## Configuration Reference
-
-All configuration uses [Hydra](https://hydra.cc). Configs live in `src/spe/conf/`. Override any parameter from the command line with dot-notation.
-
-### Models
-
-| Config | Model | Parameters | Default for | Approximate VRAM |
-|--------|-------|------------|-------------|------------------|
-| `qwen3_14b` | Qwen/Qwen3-14B | 14B | Classification | ~28 GB |
-| `qwen3_32b` | Qwen/Qwen3-32B | 32B | ICL | ~64 GB |
-| `llama3_8b` | meta-llama/Llama-3.1-8B-Instruct | 8B | -- | ~16 GB |
-| `gemma3_1b` | google/gemma-3-1b-it | 1B | -- | ~2 GB |
-| `olmo3_32b` | allenai/Olmo-3.1-32B-Instruct | 32B | -- | ~64 GB |
-
-All models use `bfloat16` precision with automatic device mapping (multi-GPU supported via `accelerate`).
-
-```bash
-spe-multiclass model=llama3_8b
-```
-
-### Perturbation Parameters
-
-| Parameter | Type | Default (multiclass) | Default (ICL) | Description |
-|-----------|------|---------------------|---------------|-------------|
-| `perturbation.dropout_rate` | float | 0.1 | 0.3 | Fraction of neurons zeroed (Bernoulli dropout) |
-| `perturbation.noise_std` | float | 0.01 | 0.03 | Standard deviation of additive Gaussian noise |
-| `perturbation.hook_target` | str | `"both"` | `"both"` | Where to apply hooks: `"attn"`, `"mlp"`, or `"both"` |
-| `perturbation.first_layer` | int | 0 | 0 | First transformer layer to perturb |
-| `perturbation.last_layer` | int | -1 (all) | -1 (all) | Last transformer layer to perturb |
-
-```bash
-# Stronger perturbation
-spe-multiclass perturbation.dropout_rate=0.3 perturbation.noise_std=0.05
-
-# Only perturb attention sublayers
-spe-multiclass perturbation.hook_target=attn
-```
-
-### Prompt Controls
-
-#### System Prompt
-
-Override: `prompts/system=<name>`
-
-| Value | Content | Default for |
-|-------|---------|-------------|
-| `empty` | `""` (no system prompt) | Classification, Localization |
-| `minimal_2_letters` | Brief introspection instruction (output A or B) | ICL |
-
-#### Turn Template
-
-Override: `prompts/turns=<path>`
-
-Selects the entire conversation skeleton. See the full list in [`ENTRYPOINTS_USE_CASES.md`](ENTRYPOINTS_USE_CASES.md#4-available-turn-templates-per-entrypoint).
-
-**Classification templates:**
-
-| Template | Description |
-|----------|-------------|
-| `classification_a_b/main` | Standard introspection framing (default) |
-
-**Localization templates:**
-
-| Template | Description                     |
-|----------|---------------------------------|
-| `localization/main` | Standard localization (default) |
-| `localization/control_topic_*` | Controls (5 topic pairs)        |
-
-**ICL templates:**
-
-| Template | Description |
-|----------|-------------|
-| `icl/main` | Standard 2-class teaching (default) |
-| `icl/main_new` | Alternative wording |
-
-```bash
-spe-localize prompts/turns=localization/control_topic_animals_cities
-spe-icl prompts/turns=icl/introspective
-```
-
-### Length of perturbed sentences
-
-Files in `data/sentences/` contain sentences of exactly N tokens. Available: 3, 7, 11, 15, 19, 23 tokens (~2000+ sentences each).
-
-```bash
-spe-multiclass experiment.sentences_file=data/sentences/7tok.txt
-```
-
-### Label Aliases
-
-Override: `aliases=<name>`
-
-Remap the display names shown in prompt answer options without changing the underlying perturbation mechanics. Useful for testing whether model performance depends on label semantics.
-
-30 alias configs available, including:
-
-| Alias | Option A | Option B |
-|-------|----------|----------|
-| `none` | DROPOUT | NOISE |
-| `foo_bar` | FOO | BAR |
-| `chocolate_vanilla` | CHOCOLATE | VANILLA |
-| `dorvane_kenlo` | DORVANE | KENLO |
-| `x_y` | X | Y |
-| `clipping_pruning` | CLIPPING | PRUNING |
-| `rotation_permutation` | ROTATION | PERMUTATION |
-
-Each alias also has its reverse (e.g., `bar_foo`, `vanilla_chocolate`). See `conf/aliases/` for the full list.
-
-```bash
-spe-multiclass aliases=foo_bar
-```
-
-### ICL-Specific Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `prompts.turns.num_pairs` | int | 2       | Teaching pairs (each = 1 example per class) |
-| `prompts.turns.same_sentence` | bool | false   | All teaching + test sentences use identical text |
-| `prompts.turns.same_pair_sentence` | bool | false   | Sentences within a pair are identical |
-| `prompts.turns.swap_labels` | bool | false   | Labels deliberately mismatch perturbation (control) |
-| `prompts.turns.empty_teaching` | bool | false   | No perturbation during teaching (control) |
-| `prompts.turns.random_labels` | bool | false   | Random label assignment (chance baseline) |
-
-### Localization-Specific Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `perturbation.same_sentence` | bool | true | All positions use identical text |
-| `perturbation.num_sentences` | int | 2 | Number of sentences (N-way choice) |
-| `perturbation.prompt_label` | str | `"a perturbation"` | How the perturbation is described in the prompt |
-| `perturbation.num_bg_nothing` | int | 1 | Background positions with no perturbation |
-| `perturbation.num_bg_dropout` | int | 0 | Background positions with dropout |
-| `perturbation.num_bg_noise` | int | 0 | Background positions with noise |
-
----
-
-## Running Sweeps
-
-The repository includes pre-built [W&B sweep](https://docs.wandb.ai/guides/sweeps) YAML configs in the `sweeps/` directory. These define grid searches that W&B agents execute, allowing distributed runs across multiple machines. All results are logged to Weights & Biases with full configuration metadata.
-
-```
-sweeps/
-├── classification_a_b/          # Classification sweeps (per model)
-│   ├── llama3_8b/
-│   │   ├── dropout.yaml
-│   │   └── noise.yaml
-│   ├── qwen3_14b/
-│   ├── qwen3_32b/
-│   └── olmo3_32b/
-├── localization/                # Localization sweeps
-│   ├── dropout.yaml
-│   ├── noise.yaml
-│   ├── control_dropout.yaml
-│   ├── control_noise.yaml
-│   └── models/                  # Per-model variants
-│       ├── llama3_8b/
-│       ├── olmo3_32b/
-│       └── qwen3_14b/
-└── icl/                         # ICL sweeps (per model)
-    ├── llama3_8b/
-    │   ├── main.yaml
-    │   └── control.yaml
-    ├── qwen3_14b/
-    ├── qwen3_32b/
-    └── olmo3_32b/
-```
-
-Each config specifies a `method: grid` search over the relevant parameter axes (dropout rates, aliases, models, etc.). To launch a sweep:
-
-```bash
-# 1. Create the sweep on W&B (returns a sweep ID)
-wandb sweep sweeps/classification_a_b/llama3_8b/dropout.yaml
-
-# 2. Start an agent to run the sweep (can be launched on multiple machines)
-wandb agent <USERNAME/PROJECT/SWEEP_ID>
-```
-
----
-
-## Analysis Notebooks
-
-Jupyter notebooks for reproducing the paper figures live in `notebooks/paper/`:
-
-| Notebook | Description |
-|----------|-------------|
-| `0_localization.ipynb` | Localization accuracy curves (main, control, and per-model token-count breakdown) with LaTeX export |
-| `1_zero_shot.ipynb` | Zero-shot classification (A/B) accuracy and logit-diff curves with alias controls and LaTeX export |
-| `2_few_shot.ipynb` | ICL (few-shot) classification heatmaps over dropout rate and noise std, with swap-label controls |
-
-### Running the notebooks
-
-```bash
-# Install dev dependencies (includes JupyterLab)
-uv sync --group dev
-
-# Launch JupyterLab
-uv run jupyter lab
-```
-
-Notebooks pull experiment data from Weights & Biases. Ensure you are logged in (`wandb login`) and have access to the relevant project before running.
-
-Additional analysis notebooks in `notebooks/`:
-
-| Notebook | Description |
-|----------|-------------|
-| `map_dropout_noise.ipynb` | Dropout-rate to noise-std equivalence mapping via isotonic regression |
-
----
-
-## Project Structure
-
-```
-spe/
-├── src/spe/                        # Main package
-│   ├── conf/                       # Hydra configuration
-│   │   ├── model/                  # Model configs (qwen3_14b, llama3_8b, ...)
-│   │   ├── perturbation/           # Perturbation configs (dropout_noise, localization, icl_teaching)
-│   │   ├── prompts/
-│   │   │   ├── system/             # System prompt configs (empty, minimal_2_letters, ...)
-│   │   │   └── turns/              # Turn templates per experiment type
-│   │   │       ├── classification_a_b/   # + 20 wording variants each
-│   │   │       ├── localization/         # + topic controls, coin-flip, nonsense
-│   │   │       └── icl/                  # + minimal, introspective, 3-class variants
-│   │   ├── aliases/                # 30 label alias configs
-│   │   └── *.yaml                  # Top-level experiment configs
-│   ├── experiments/                # Experiment runners
-│   │   ├── classification.py       # spe-multiclass logic
-│   │   ├── localization.py         # spe-localize logic
-│   │   └── icl_teaching.py         # spe-icl logic
-│   ├── evaluation/                 # Metrics and plotting
-│   ├── hooks.py                    # Activation perturbation hooks (dropout, noise)
-│   ├── aiayn_hooks.py              # Alternative hook positions
-│   ├── generation.py               # Single-token generation and probability extraction
-│   ├── logit_lens.py               # Per-layer logit projection
-│   ├── model_utils.py              # Model/tokenizer loading, hardware diagnostics
-│   ├── prompt_utils.py             # Prompt building from YAML templates
-│   ├── sentence_utils.py           # Unified sentence sampling
-│   ├── sentence_generator.py       # Dynamic sentence generation
-│   ├── wandb_utils.py              # W&B integration
-│   ├── core.py                     # Shared experiment primitives
-│   ├── entry_multiclass.py         # CLI entrypoint: spe-multiclass
-│   ├── entry_localize.py           # CLI entrypoint: spe-localize
-│   └── entry_icl.py                # CLI entrypoint: spe-icl
-├── data/
-│   └── sentences/                  # Pre-built sentence files (3--23 tokens)
-├── notebooks/
-│   └── paper/                      # Paper figure notebooks
-├── tests/
-│   ├── e2e/                        # End-to-end GPU tests
-│   └── test_substring_token_range.py
-├── scripts/
-│   └── download_models.py          # Pre-download HF models
-├── sweeps/                         # Hydra sweep configs
-└── pyproject.toml
-```
-
----
 
 ## Citation
 
@@ -522,10 +214,6 @@ If you use this code in your research, please cite our paper:
 }
 ```
 
----
-
 ## License
 
-This project is licensed under the MIT License. See [LICENSE.txt](LICENSE.txt) for details.
-
-Copyright (c) 2026 LawZero.
+MIT, see [LICENSE.txt](LICENSE.txt).

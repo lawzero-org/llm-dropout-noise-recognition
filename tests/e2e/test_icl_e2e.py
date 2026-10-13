@@ -10,7 +10,7 @@ from collections import Counter
 import pytest
 from omegaconf import OmegaConf
 
-from spe.experiments.icl_teaching import run
+from spe.experiments.icl import build_icl_messages, run
 
 # ---------------------------------------------------------------------------
 # Config builder
@@ -22,8 +22,6 @@ def _cfg(
     num_pairs: int = 2,
     same_sentence: bool = True,
     swap_labels: bool = False,
-    empty_teaching: bool = False,
-    random_labels: bool = False,
     sentences_file: str | None = None,
     seed: int = 42,
 ):
@@ -43,8 +41,6 @@ def _cfg(
                     "same_sentence": same_sentence,
                     "same_pair_sentence": False,
                     "swap_labels": swap_labels,
-                    "empty_teaching": empty_teaching,
-                    "random_labels": random_labels,
                     # Conversation templates
                     "intro_user": "I will apply perturbations. "
                     "Types: {type_a} and {type_b}.",
@@ -206,50 +202,29 @@ def test_swap_labels_control(
     assert len(results) > 0
 
 
-def test_empty_teaching_control(
-    icl_mocks,
-    tokenizer,
-    fake_model,
-    sentences_file,
-):
-    """``empty_teaching=True`` runs to completion (no perturbation on
-    teaching sentences)."""
-    cfg = _cfg(
-        num_samples=2,
-        empty_teaching=True,
-        sentences_file=sentences_file,
-    )
-    _, results = run(cfg, fake_model, tokenizer)
-    assert len(results) > 0
+def test_swap_labels_names_the_other_perturbation():
+    """With ``swap_labels=True`` each teaching sentence is labeled with the
+    perturbation that was *not* applied to it."""
+    schedule = ["DROPOUT", "NOISE", "NOISE", "DROPOUT"]
+    sentences = ["s1", "s1", "s2", "s2", "test"]
+    labels = {}
+    for swap in (False, True):
+        cfg = _cfg(num_pairs=2, swap_labels=swap)
+        msgs = build_icl_messages(
+            cfg, schedule, sentences, option_order=("DROPOUT", "NOISE")
+        )
+        labels[swap] = [
+            m["content"] for m in msgs if m["content"].startswith("That was")
+        ]
+    assert labels[False] == [f"That was {c}." for c in schedule]
+    assert labels[True] == [
+        f"That was {'NOISE' if c == 'DROPOUT' else 'DROPOUT'}." for c in schedule
+    ]
 
 
-def test_random_labels_control(
-    icl_mocks,
-    tokenizer,
-    fake_model,
-    sentences_file,
-):
-    """``random_labels=True`` runs to completion (labels uncorrelated
-    with perturbation)."""
-    cfg = _cfg(
-        num_samples=2,
-        random_labels=True,
-        sentences_file=sentences_file,
-    )
-    _, results = run(cfg, fake_model, tokenizer)
-    assert len(results) > 0
-
-
-def test_mutually_exclusive_controls_raises(
-    tokenizer,
-    fake_model,
-    sentences_file,
-):
-    """Activating more than one control flag raises ``ValueError``."""
-    cfg = _cfg(
-        swap_labels=True,
-        random_labels=True,
-        sentences_file=sentences_file,
-    )
-    with pytest.raises(ValueError, match="Only one control flag"):
+def test_three_classes_raise(tokenizer, fake_model, sentences_file):
+    """Only the two-class task of the paper is supported."""
+    cfg = _cfg(sentences_file=sentences_file)
+    cfg.prompts.turns.class_names = ["DROPOUT", "NOISE", "NOTHING"]
+    with pytest.raises(ValueError, match="2 class names"):
         run(cfg, fake_model, tokenizer)

@@ -1,0 +1,21 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --experiment localization.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: qwen3_8_27b-loc-dropout-fine
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_8_27b
+  experiment.stage:
+    value: fine
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  perturbation.target_perturbation:
+    value: DROPOUT
+  perturbation.dropout_rate:
+    values: [0.002, 0.004, 0.006, 0.008, 0.01, 0.012, 0.014, 0.016, 0.018]

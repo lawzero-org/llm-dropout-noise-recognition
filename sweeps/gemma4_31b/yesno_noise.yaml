@@ -1,0 +1,30 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# Yes/no detection (range of Table 1): the noise is always applied and the model is asked whether a perturbation was applied;
+# accuracy_primary is the recall P(model answers YES | perturbation), with the option order randomized. Strength 0 is
+# the no-perturbation baseline (the 'yes' rate on unperturbed sentences).
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: gemma4_31b-yesno-noise
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: gemma4_31b
+  experiment.stage:
+    value: yesno
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: classification/perturbed
+  perturbation.active_perturbations:
+    value: "[NOISE]"
+  perturbation.dropout_rate:
+    value: 0
+  aliases:
+    value: noise_yes
+  perturbation.noise_std:
+    values: [0, 0.006, 0.0068, 0.0076, 0.0084, 0.0092, 0.01, 0.0108, 0.0116, 0.0124, 0.0132, 0.014]

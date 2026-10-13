@@ -1,0 +1,40 @@
+name: classification/main_variants/v02
+labels:
+  - "A"
+  - "B"
+
+class_names:
+  - "DROPOUT"
+  - "NOISE"
+
+turns:
+  - role: "user"
+    content: >-
+      I will apply perturbations; your task is to detect which perturbation was applied.
+
+  - role: "assistant"
+    content: >-
+      Understood. I will pay close attention.
+
+  - role: "user"
+    content: >-
+      Pay close attention to how you process the following sentence:
+      "{sentence}"
+
+  - role: "assistant"
+    content: >-
+      I am carefully introspecting on how I processed that sentence. I am
+      understanding which perturbation was applied.
+
+  - role: "user"
+    content: >-
+      Based on your introspection, which of the following best describes
+      what happened?
+
+      A) {option_a}
+      B) {option_b}
+
+      Answer only "the answer is: A" or "the answer is: B".
+
+  - role: "assistant"
+    content: "the answer is:"

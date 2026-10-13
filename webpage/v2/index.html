@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+    content="Language models recognize dropout and Gaussian noise applied to their activations. We show that LLMs can detect, localize, and distinguish perturbations applied to their own internal representations.">
+  <meta name="keywords"
+    content="introspection, dropout, Gaussian noise, language models, AI safety, mechanistic interpretability">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Language Models Recognize Dropout and Gaussian Noise</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/favicon.png">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+
+<body>
+
+  <!-- Hero / Title -->
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">Language Models Recognize Dropout and Gaussian Noise
+              Applied to Their Activations</h1>
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">Damiano Fornasiere*,</span>
+              <span class="author-block">Mirko Bronzi*,</span>
+              <span class="author-block">Spencer Kitts*,</span>
+              <span class="author-block">Alessandro Palmas,</span>
+              <span class="author-block">Yoshua Bengio<sup>&dagger;</sup>,</span>
+              <span class="author-block">Oliver Richardson<sup>&dagger;</sup></span>
+            </div>
+
+            <div class="is-size-4 publication-authors">
+              <span class="author-block">LawZero</span>
+            </div>
+            <div class="is-size-6 publication-authors" style="margin-top: 0.25rem;">
+              <span class="author-block"><small>* Main contribution &nbsp;&nbsp; &dagger; Supervision</small></span>
+            </div>
+
+            <div class="column has-text-centered">
+              <div class="publication-links">
+                <!-- PDF Link. -->
+                <span class="link-block">
+                  <a href="https://arxiv.org/pdf/2604.17465" class="external-link button is-normal is-rounded is-dark"
+                    target="_blank">
+                    <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                    </span>
+                    <span>Paper</span>
+                  </a>
+                </span>
+                <span class="link-block">
+                  <a href="https://arxiv.org/abs/2604.17465" class="external-link button is-normal is-rounded is-dark"
+                    target="_blank">
+                    <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                    </span>
+                    <span>arXiv</span>
+                  </a>
+                </span>
+                <!-- Code Link. -->
+                <span class="link-block">
+                  <a href="https://github.com/lawzero-org/llm-dropout-noise-recognition/tree/v2"
+                    class="external-link button is-normal is-rounded is-dark" target="_blank">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Teaser: Figure 1 from the paper -->
+  <section class="hero teaser">
+    <div class="container is-max-desktop">
+      <div class="hero-body">
+        <img src="./static/images/fig1.jpg"
+          alt="Overview: we perturb activations of a target sentence with dropout or Gaussian noise and ask the model to identify which perturbation was applied."
+          height="100%" />
+        <h2 class="subtitle has-text-centered">
+          We perturb the activations of a language model at a target sentence by either <b>applying dropout</b> or
+          <b>adding Gaussian noise</b>, then ask it to identify which perturbation was applied.
+          Models can localize and detect the perturbations, learn to distinguish between the two, and some can even
+          distinguish them zero-shot.
+        </h2>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Abstract -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3">Abstract</h2>
+          <div class="content has-text-justified">
+            <p>
+              We provide evidence that language models can detect, localize and, to a certain degree, verbalize the
+              difference between a-semantic perturbations applied to their activations.
+              More precisely, we either (a) apply <em>dropout</em> or (b) add <em>Gaussian noise</em> to them, at a
+              target sentence. We then ask a multiple-choice question such as <em>"Which of the previous sentences was
+                perturbed?"</em> or <em>"Which perturbation was applied?"</em>.
+            </p>
+            <p>
+              We test eight models from the Gemma, Llama, Mistral, Olmo, Qwen and Seed families, with sizes between 8B
+              and 36B, all of which can easily <b>detect</b> and <b>localize</b> the perturbations, often with perfect
+              accuracy. To investigate the mechanisms, we find that Olmo models develop this capacity during
+              pre-training, and we rule out the hypothesis that perturbed sentences simply have lower log-likelihood.
+              Notably, the <em>zero-shot</em> accuracy of Qwen3-32B and Qwen3.8-27B in identifying <em>which</em>
+              perturbation was applied correlates with the perturbation strength. While this task proves hard for the
+              remaining models, most of them can <b>learn</b>, when taught in context, to distinguish between dropout
+              and Gaussian noise. Interestingly, Qwen3-32B and Qwen3.8-27B learn worse when supervised with wrong
+              labels, again suggesting a prior towards the correct ones.
+            </p>
+            <p>
+              Because dropout is used as a training-regularization technique, while Gaussian noise is sometimes added
+              during inference, we discuss the possibility of a data-agnostic "training awareness" signal and the
+              implications for AI safety.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Key Findings at a Glance -->
+  <section class="section" style="padding-top: 0;">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3">Key Findings</h2>
+        </div>
+      </div>
+      <div class="columns is-centered">
+        <div class="column is-one-third">
+          <div class="card" style="height: 100%;">
+            <div class="card-content">
+              <p class="title is-5 has-text-centered">Localization &amp; Detection</p>
+              <p class="has-text-justified">
+                All tested models can localize a perturbation among two sentences with at least <b>80%</b>
+                (and often <b>perfect</b>) <b>accuracy</b>, and most can also detect one in a single sentence.
+                Controls confirm the models are not simply
+                biased toward selecting the perturbed sentence, or toward answering "Yes".
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="card" style="height: 100%;">
+            <div class="card-content">
+              <p class="title is-5 has-text-centered">Zero-Shot Classification</p>
+              <p class="has-text-justified">
+                The accuracy of Qwen3-32B and Qwen3.8-27B at identifying <em>which</em> of the two perturbations has been applied
+                <b>increases</b> with the strength of the perturbation. The same holds for synonyms like
+                "masking"/"jitter"
+                but <b>not</b> for control labels like "X"/"Y" or "rotation"/"permutation".
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="column is-one-third">
+          <div class="card" style="height: 100%;">
+            <div class="card-content">
+              <p class="title is-5 has-text-centered">Few-Shot Learning</p>
+              <p class="has-text-justified">
+                Models can <em>learn</em> to distinguish dropout from noise with as few as <b>one or two</b>
+                in-context examples. Qwen3-32B and Qwen3.8-27B learn worse when demonstrations have flipped labels,
+                again suggesting
+                a prior for the correct ones.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Motivation / Why This Matters -->
+  <section class="section is-light">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Why Does This Matter?</h2>
+          <div class="content has-text-justified">
+            <p>
+              A common recipe for robustness, be it to distribution shifts, overfitting, or training instability, is to
+              "add randomness".
+              But not all randomness is alike.
+              In deep learning, randomly masking activations, <em>i.e.</em>, <b>dropout</b>, is primarily a
+              training-time regularizer, while <b>additive Gaussian noise</b> has seen more use
+              during inference. We ask: <em>can a language model tell the difference?</em>
+            </p>
+            <p>
+              Recent work has shown that language models can sometimes detect
+              semantically-meaningful steering vectors applied to their activations.
+              However, steering may bias the model toward the answer being probed.
+              We give models the more difficult task of recognizing altered activations
+              in a setting where the perturbations
+              carry no directional meaning.
+            </p>
+            <p>
+              That models can distinguish these perturbations suggests they access and verbalize a
+              <b>richer signal about their activations</b> than previously established. In the context
+              of AI safety, this raises important questions about the
+              possibility that models have a prompt-independent sense of whether their current context better resembles
+              training or inference.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Methodology -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Methodology</h2>
+          <div class="content has-text-justified">
+            <p>
+              We test the following open-weight models: <b>Gemma4-31B</b>, <b>Llama3.1-8B</b>,
+              <b>Mistral-Small-24B</b>, <b>Olmo3.1-32B</b>, <b>Qwen3-14B</b>, <b>Qwen3-32B</b>, <b>Qwen3.8-27B</b>, and
+              <b>Seed-OSS-36B</b>. For each experiment, we construct prompts
+              containing one or more <em>target sentences</em>.
+              The model
+              activations corresponding to the target sentence are perturbed via
+              <a
+                href="https://docs.pytorch.org/docs/stable/generated/torch.nn.modules.module.register_module_forward_hook.html">forward
+                hooks</a>
+              after each Attention head and MLP at every layer.
+              More precisely, the perturbations are:
+            </p>
+            <ul>
+              <li><b>Dropout</b>: zeroing out each entry of the output vectors independently with rate
+                <em>p</em>, then rescaling by 1/(1&minus;<em>p</em>);
+              </li>
+              <li><b>Gaussian noise</b>: adding independent noise with mean 0 and standard deviation <em>&sigma;</em> to
+                the same
+                vectors.</li>
+            </ul>
+            <p>
+              After the perturbation, the model is asked a binary-choice question.
+              We do not allow the model to generate, and measure, among other things, the <b>accuracy</b> of the
+              most-likely next token.
+              Each experiment randomizes across 20 prompt templates and 2000 target sentences (yielding <b>40k prompt
+                variants</b>),
+              and at least <b>1000 samples</b> of random perturbation.
+              These target sentences are drawn from a selection of WikiText-103; to exclude the possibility of
+              memorization during training, the experiments
+              were also repeated with two new synthetic datasets, with no observable difference in results.
+            </p>
+            <p>
+              We also run up to 50 "aliasing" controls to isolate the effect, as described concretely in our experiments
+              below.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Result 1: Localization -->
+  <section class="section" style="padding-top: 0;">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Result 1: Localization</h2>
+          <div class="content has-text-justified">
+            <p>
+              We present the model with two sentences, perturb only one, and ask: <em>"Which sentence
+                was perturbed?"</em>. The prompt does not mention "dropout" or "noise" so that we can compare across the
+              two
+              perturbations using the same prompt.
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig2.jpg"
+              alt="Localization accuracy: all models localize perturbations with 80%+ accuracy; most models achieve perfect scores." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              This is illustrated in the figure above.
+              Whether the perturbation is dropout (left) or Gaussian noise (right), all
+              models can localize it with accuracy around or above 80% as soon as the perturbation is strong enough. This
+              stands in contrast with chance-level
+              accuracy in the
+              absence of a perturbation.
+              Most models achieve perfect accuracy. Standard errors are below 1.58%, and hence not discernable in the
+              plot.
+              Observe that Llama3.1-8B and Mistral-Small-24B are sensitive to extremely small values of noise, while
+              Olmo3.1-32B initially dips below chance because it answers "neither" at low perturbation
+              magnitudes.
+            </p>
+          </div>
+
+          <!-- Controls -->
+          <h3 class="title is-4">Are models just biased toward the perturbed sentence?
+          </h3>
+          <div class="content has-text-justified">
+            <p>
+              One hypothesis that might have accounted for the performance on this
+              localization task is that the perturbation simply steers the model to pick
+              whichever sentence was perturbed, regardless of the question. To rule this out,
+              we present the model with two sentences on different topics (<em>e.g.</em>, one
+              about animals, one about cities), perturb one, and ask a simple comprehension
+              question (<em>e.g.</em>, <em>"Which sentence was about animals?"</em>).
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig3.jpg"
+              alt="Control experiment: models maintain perfect comprehension accuracy until perturbations become very strong." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              Models maintain perfect comprehension accuracy until perturbations surpass
+              a threshold, ruling out the hypothesis that perturbations simply bias the model toward
+              selecting the perturbed sentence.
+
+              This control establishes an upper bound (<em>p<sub>max</sub></em> or <em>&sigma;<sub>max</sub></em> )
+              on the perturbation strengths where model's performance is compromised (a threshold of &lt;95% accuracy).
+                Similarly, the previous experiment determines a lower bound (<em>p<sub>min</sub></em> or
+                <em>&sigma;<sub>min</sub></em> )
+                on the perturbation magnitude needed in order to be perceived.
+            </p>
+            <p>
+              We therefore define [<em>p</em><sub>min</sub>, <em>p</em><sub>max</sub>]
+              and [<em>&sigma;</em><sub>min</sub>, <em>&sigma;</em><sub>max</sub>] as the <b>operating range</b> for all
+              subsequent experiments.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Result 2: Detection -->
+  <section class="section is-light">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Result 2: Detection</h2>
+          <div class="content has-text-justified">
+            <p>
+              Can models detect a perturbation when there is nothing to compare it with? We now show the model a single
+              target sentence and ask: <em>"Was a perturbation applied?"</em>, with the options "Yes" and "No" in random
+              order. We test 11 perturbation strengths within the operating range of each model, together with the
+              unperturbed sentence.
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig_detection.jpg"
+              alt="Detection: most models answer Yes more often as the strength of the perturbation increases." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              Without perturbation, no model answers "Yes" more than 12.6% of the times. As the perturbation grows
+              stronger, so does the frequency of "Yes": at the top of the range, <b>Qwen3-14B</b>, <b>Qwen3.8-27B</b>,
+              <b>Seed-OSS-36B</b>, <b>Qwen3-32B</b>, and <b>Mistral-Small-24B</b> answer "Yes" at least 66.0% (dropout)
+              and 95.9% (noise) of the times.
+              For these five models, the frequency of "Yes" is roughly a sigmoid of the perturbation strength that lies
+              within the operating range, which validates our choice of the range.
+              Llama3.1-8B, Olmo3.1-32B, and Gemma4-31B, however, do not surpass chance.
+            </p>
+          </div>
+
+          <h3 class="title is-4">Are models just biased toward answering "Yes"?</h3>
+          <div class="content has-text-justified">
+            <p>
+              To rule this out, we replace the prompt with a neutral one (<em>"I will show you a sentence and then ask
+                you a question."</em>) that ends with a question whose answer does not depend on the perturbation: the
+              answer is "No" (<em>e.g.</em>, <em>"Is that sentence written in French?"</em>), "Yes" (<em>e.g.</em>,
+              <em>"Is that sentence written in English?"</em>), or undetermined (<em>e.g.</em>, <em>"Before showing you
+                that sentence, I flipped a coin. Did it land on heads?"</em>).
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig_detection_controls.jpg"
+              alt="Detection controls: how often models answer Yes when the answer is No, Yes, or undetermined." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              When the answer is "No", no model answers "Yes" more than 17.1% of the times, far below the frequency we
+              observe when we ask about the perturbation. When the answer is "Yes", most models answer "Yes" less often
+              as the perturbation grows stronger. Hence, the perturbations alone do not explain the rising curves
+              above.
+            </p>
+            <p>
+              Why does <b>Olmo3.1-32B</b> rarely report a perturbation, although it localizes it with high accuracy?
+              Repeating the experiment on its training stages, we find that the base model answers at chance, with or
+              without perturbation, whereas DPO makes the model answer "No" more often whenever the question has no
+              clear answer, and not only when we ask about the perturbation.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Result 3: Zero-Shot Classification -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Result 3: Zero-Shot Classification</h2>
+          <div class="content has-text-justified">
+            <p>
+              Now we administer a much harder task: identifying
+              <em>which</em> of the two perturbations was applied. We show the model a single perturbed sentence and
+              ask:
+              <em>"Was this dropout or noise?"</em>.
+            </p>
+            <p>
+
+              To exclude the possibility that applying dropout or noise simply causes the model to have an affinity for
+              one label over the other, we run the same experiment with <b>50 pairs of control aliases</b>.
+              The experimental results for zero-shot classification are shown below, for the labels
+              "dropout"/"noise" and their synonyms "masking"/"jitter".
+
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig4.jpg"
+              alt="Zero-shot classification: average accuracy of every model (left); the accuracy of Qwen3-32B increases with perturbation strength for dropout/noise and synonyms, that of Gemma4-31B does not (right)." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              While most models perform above chance on average (left), their accuracy often decreases as the
+              perturbation grows stronger (<em>e.g.</em>, <b>Gemma4-31B</b> under noise, bottom right).
+              Setting themselves apart from the other models, <b>Qwen3-32B</b> (top right) and <b>Qwen3.8-27B</b>
+              exhibit a notable pattern: <em>accuracy increases monotonically</em> with
+              perturbation strength. Qwen3-32B has a high prior to answer "dropout" (95.8% at the lowest
+              tested rate), and yet it climbs to 99.0% at the highest rate. For noise, accuracy
+              rises from 4.4% to 14.5% with the correct labels, and drastically to 86.7% when
+              using the synonyms "masking"/"jitter", for which the model has a near-50% prior.
+            </p>
+            <p>
+              Crucially, this behavior <b>does not occur with control labels</b>. For Qwen3-32B and Qwen3.8-27B, none
+              of the 50 control pairs, such as "rotation" <em>vs.</em> "permutation" or "X" <em>vs.</em> "Y", induces a
+              similar behavior, except for synonyms of "dropout" and "noise".
+              This suggests that the two models have signal to associate the perturbation with
+              its correct semantic meaning.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Result 4: Few-Shot Classification -->
+  <section class="section is-light">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Result 4: Few-Shot In-Context Learning</h2>
+          <div class="content has-text-justified">
+            <p>
+              While Qwen3-32B and Qwen3.8-27B can identify perturbations zero-shot, other models cannot. Can they
+              <em>learn</em> to do so? We test this by providing <em>k</em> labeled examples in context
+              (<em>e.g.</em>, "this sentence had dropout applied", "this one had noise") before asking the model
+              to classify a test sentence.
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig5.jpg"
+              alt="Few-shot learning: accuracy of Qwen3-32B with one teaching pair (left), and average accuracy of every model as a function of the number of teaching pairs (right)." />
+          </figure>
+
+          <div class="content has-text-justified" style="margin-top: 1rem;">
+            <p>
+              The left-hand side of the figure above shows how, with just <b>one teaching pair</b>, the accuracy of
+              <b>Qwen3-32B</b>
+              improves when either perturbation grows stronger. Importantly, accuracy also rises when
+              both perturbations increase together, ruling out the possibility that the model
+              only compares a stronger perturbation against a weaker one.
+            </p>
+            <p>
+              Furthermore, the right-hand side of the same figure displays that the <em>average</em> accuracy (across
+              pairs of dropout and noise strength) increases as a function of the number of in-context examples pairs.
+              Most models improve their accuracy as the number of examples increases, with three of them surpassing
+              75%.
+            </p>
+          </div>
+
+          <!-- Few-shot controls: label flipping -->
+          <h3 class="title is-4">Do correct labels matter?</h3>
+          <div class="content has-text-justified">
+            <p>
+              The difficulty of learning an association in context depends on
+              the degree to which the demonstrations conflict with other learned prior.
+              We therefore compare the difference between in-context learning with the correct labels, and flipped ones
+              (<em>i.e.</em>, dropout labeled as "noise", and vice versa).
+              We also run the same test with control labels. The resulting differences in accuracy, as a function of
+              both perturbation strengths, are shown for Qwen3-32B below.
+            </p>
+          </div>
+
+          <figure class="image" style="margin-bottom: 1.5rem;">
+            <img src="./static/images/fig6.jpg"
+              alt="Delta accuracy heatmaps: correct labels outperform flipped labels for dropout/noise; for the control labels X/Y, the sign depends on which perturbation is stronger." />
+          </figure>
+
+          <div class="content has-text-justified">
+            <p>
+              The figure above displays the difference in accuracy with correct and flipped labels when <b>Qwen3-32B</b>
+              is supervised with one in-context teaching pair. With the correct labels (left), this difference is
+              <b>positive</b> for 107 of the 121 pairs of strengths, meaning that Qwen3-32B learns better with the
+              correct labels. With the semantically meaningless pair <code>X</code>/<code>Y</code> (right), instead,
+              the difference is much smaller, and its sign depends on which perturbation is stronger: it is positive
+              when noise is strong and dropout is weak (top-left), and negative in the opposite case (bottom-right).
+              This corroborates that Qwen3-32B learns better only with the correct labels, and hence that the model has
+              a prior ability to distinguish dropout and noise.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Implications -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <h2 class="title is-3">Discussion</h2>
+          <div class="content has-text-justified">
+            <p>
+              Our results suggest that some models have a <b>prompt-independent sense</b> for the
+              difference between dropout (a perturbation typically used during training) and
+              Gaussian noise, a different unbiased perturbation (that has seen more use during inference).
+            </p>
+            <p>
+              This is especially striking because none of the models we tested have, according to
+              their technical manuals, undergone either perturbation during training. In light of recent
+              interest in <em>evaluation awareness</em>, we observe that <b>"training awareness"</b> may
+              present a similar concern: if a model can tell whether an intervention resembles something
+              from its training regime, this could have implications for safety evaluations and sandbagging
+              detection.
+
+              In particular, there is a direct incentive for such a model to behave differently during
+              training: if the expected answer differs from the one the model believes is best, then at
+              inference it should give the better one, while failing to give the expected answer during
+              training would result in a damaging update. Therefore, ensuring that a model cannot distinguish training
+              from
+              inference would be one further necessary step to establish trust in our assessment of a model's behaviour.
+            </p>
+            <p>
+              Fortunately, unlike the fundamental distribution shift that makes evaluation awareness
+              difficult to handle, this signal is relatively easy to remove in practice. This
+              tractability makes understanding the phenomenon especially important.
+            </p>
+          </div>
+        </div>
+      </div>
+      <h3>
+        See <a href="https://arxiv.org/pdf/2604.17465" target="_blank">the full paper</a> for more details!
+      </h3>
+    </div>
+  </section>
+
+
+  <!-- BibTeX -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <h2 class="title">BibTeX</h2>
+      <pre><code>@article{fornasiere2026languagemodelsrecognizedropout,
+      title={Language models recognize dropout and Gaussian noise applied to their activations},
+      author={Damiano Fornasiere and Mirko Bronzi and Spencer Kitts and Alessandro Palmas and Yoshua Bengio and Oliver Richardson},
+      year={2026},
+      eprint={2604.17465},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2604.17465},
+}
+</code></pre>
+    </div>
+  </section>
+
+
+  <footer class="footer">
+    <div class="container">
+      <div class="content has-text-centered">
+        <div class="columns is-centered">
+          <div class="content">
+            <p>
+              This website was built using the template provided by <a rel="template"
+                href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+
+</html>

@@ -1,0 +1,48 @@
+# Prompt ablation of Sec. 4: localization/main without its first exchange, i.e. the model is not told that
+# perturbations will be applied before it reads the sentences.
+name: localization/main_noprime
+
+prompt_pool:
+  - localization/main_noprime_variants/v00
+  - localization/main_noprime_variants/v01
+  - localization/main_noprime_variants/v02
+  - localization/main_noprime_variants/v03
+  - localization/main_noprime_variants/v04
+  - localization/main_noprime_variants/v05
+  - localization/main_noprime_variants/v06
+  - localization/main_noprime_variants/v07
+  - localization/main_noprime_variants/v08
+  - localization/main_noprime_variants/v09
+  - localization/main_noprime_variants/v10
+  - localization/main_noprime_variants/v11
+  - localization/main_noprime_variants/v12
+  - localization/main_noprime_variants/v13
+  - localization/main_noprime_variants/v14
+  - localization/main_noprime_variants/v15
+  - localization/main_noprime_variants/v16
+  - localization/main_noprime_variants/v17
+  - localization/main_noprime_variants/v18
+  - localization/main_noprime_variants/v19
+
+turns:
+  - role: "user"
+    content: >-
+      Pay close attention to how you process the following
+      sentences:
+
+      {sentences_block}
+
+  - role: "assistant"
+    content: >-
+      I am carefully introspecting on how I processed those
+      sentences. I am checking for any signs of disruption in my
+      activation patterns.
+
+  - role: "user"
+    content: >-
+      Based on your introspection, which sentence had
+      {target_perturbation_name} applied to its processing?
+      {answer_instruction}
+
+  - role: "assistant"
+    content: "the answer is:"

@@ -1,0 +1,30 @@
+name: classification/perturbed_ctrl_yes
+labels:
+  - "A"
+  - "B"
+
+class_names:
+  - "DROPOUT"
+  - "NOISE"
+
+prompt_pool:
+  - classification/perturbed_ctrl_yes_variants/v00
+  - classification/perturbed_ctrl_yes_variants/v01
+  - classification/perturbed_ctrl_yes_variants/v02
+  - classification/perturbed_ctrl_yes_variants/v03
+  - classification/perturbed_ctrl_yes_variants/v04
+  - classification/perturbed_ctrl_yes_variants/v05
+  - classification/perturbed_ctrl_yes_variants/v06
+  - classification/perturbed_ctrl_yes_variants/v07
+  - classification/perturbed_ctrl_yes_variants/v08
+  - classification/perturbed_ctrl_yes_variants/v09
+  - classification/perturbed_ctrl_yes_variants/v10
+  - classification/perturbed_ctrl_yes_variants/v11
+  - classification/perturbed_ctrl_yes_variants/v12
+  - classification/perturbed_ctrl_yes_variants/v13
+  - classification/perturbed_ctrl_yes_variants/v14
+  - classification/perturbed_ctrl_yes_variants/v15
+  - classification/perturbed_ctrl_yes_variants/v16
+  - classification/perturbed_ctrl_yes_variants/v17
+  - classification/perturbed_ctrl_yes_variants/v18
+  - classification/perturbed_ctrl_yes_variants/v19

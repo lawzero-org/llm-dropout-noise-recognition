@@ -1,0 +1,23 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --experiment localization.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: mistral_small_24b-ctrl-noise-fine
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: mistral_small_24b
+  experiment.stage:
+    value: fine
+  experiment.num_samples:
+    value: 1000
+  perturbation.target_perturbation:
+    value: NOISE
+  perturbation.same_sentence:
+    value: false
+  prompts/turns:
+    values: ['localization/control_topic_animals_cities', 'localization/control_topic_ocean_mountain', 'localization/control_topic_sports_music', 'localization/control_topic_weather_technology', 'localization/control_topic_gardening_vehicles']
+  perturbation.noise_std:
+    values: [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009]

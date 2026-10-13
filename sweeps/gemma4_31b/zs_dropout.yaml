@@ -1,0 +1,29 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --config-name classification --experiment multiclass.
+# Zero-shot classification (paper Sec. 5): single-class runs (DROPOUT only), so accuracy_primary is the
+# per-class recall P(model says the dropout-mapped label | dropout applied); 11 strengths over [min, max].
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: gemma4_31b-zs-dropout
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: gemma4_31b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: classification/main
+  perturbation.active_perturbations:
+    value: "[DROPOUT]"
+  perturbation.noise_std:
+    value: 0
+  aliases:
+    values: [none, dropout_noise, x_y, foo_bar, masking_jitter, rotation_permutation, scaling_translation, vanilla_chocolate]
+  perturbation.dropout_rate:
+    values: [0.14, 0.194, 0.248, 0.302, 0.356, 0.41, 0.464, 0.518, 0.572, 0.626, 0.68]

@@ -1,0 +1,34 @@
+# OLMo pretraining-steps figure: localization at checkpoint stage1-step73000 over the 11 bins of the OLMo range. 11 runs.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: olmo-step73000-loc-noise
+metric:
+  name: accuracy_constrained_primary
+  goal: maximize
+parameters:
+  model:
+    value: olmo3_32b_instruct_base
+  model.revision:
+    value: stage1-step73000
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  perturbation.target_perturbation:
+    value: NOISE
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  perturbation.noise_std:
+    values:
+    - 0.02
+    - 0.026
+    - 0.032
+    - 0.038
+    - 0.044
+    - 0.05
+    - 0.056
+    - 0.062
+    - 0.068
+    - 0.074
+    - 0.08

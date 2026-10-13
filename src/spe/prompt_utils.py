@@ -7,7 +7,10 @@ import omegaconf
 import transformers
 import yaml
 
-_PROMPT_POOL_SEARCH_PATH = pathlib.Path("src/spe/conf/prompts/turns")
+# Resolved from the package, so prompt variants load from any working directory.
+_PROMPT_POOL_SEARCH_PATH = (
+    pathlib.Path(__file__).resolve().parent / "conf/prompts/turns"
+)
 
 
 def load_prompt_pool(
@@ -19,12 +22,9 @@ def load_prompt_pool(
 ) -> list[dict[str, typing.Any]]:
     """Load and validate prompt pool variant configs from YAML files.
 
-    Merges the validation logic previously duplicated across
-    classification, localization, and ICL experiment files.
-
     Args:
         pool_names: List of config names (e.g.
-            ``["classification_a_b/main_variants/v00", ...]``).
+            ``["classification/main_variants/v00", ...]``).
         class_names: If provided, validate that each variant's
             ``class_names`` matches.
         labels: If provided, validate that each variant's ``labels``
@@ -170,7 +170,7 @@ def validate_token_range(first_token: int, last_token: int) -> None:
         raise ValueError(
             f"Resolved token range is empty or inverted: "
             f"first_token={first_token}, last_token={last_token}. "
-            f"Check perturb_from_turn / perturb_to_turn values."
+            "Check that the sentence appears in the prompt."
         )
 
 
@@ -234,7 +234,6 @@ def compute_substring_token_range(
     substring: str,
     anchor: str | None = None,
     enable_thinking: bool = False,
-    search_from: int = 0,
 ) -> tuple[int, int]:
     """Find the inclusive token range covering *substring* in the prompt.
 
@@ -253,9 +252,6 @@ def compute_substring_token_range(
             then returns the token range for *substring* only
             (excluding the anchor).
         enable_thinking: Must match the value used during generation.
-        search_from: Character index to start searching from. Use this
-            to skip past earlier occurrences when the same substring
-            appears multiple times in the prompt.
 
     Returns:
         ``(first_token, last_token)`` inclusive indices into the
@@ -277,12 +273,9 @@ def compute_substring_token_range(
 
     # Locate the character span of the substring
     search_string = (anchor + substring) if anchor else substring
-    match_start = text.find(search_string, search_from)
+    match_start = text.find(search_string)
     if match_start == -1:
-        raise ValueError(
-            f"Substring not found in prompt text (search_from={search_from}): "
-            f"{search_string!r}"
-        )
+        raise ValueError(f"Substring not found in prompt text: {search_string!r}")
 
     # If anchored, skip past the anchor to get the substring span
     if anchor:

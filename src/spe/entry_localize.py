@@ -1,4 +1,4 @@
-"""Entry point for localization experiment (Exp 2)."""
+"""Entry point for localization (paper Sec. 4)."""
 
 import hydra
 import omegaconf
@@ -7,9 +7,7 @@ from spe import experiment_setup
 from spe.experiments import localization as exp_localization
 
 
-@hydra.main(
-    version_base=None, config_path="conf", config_name="localization_single_experiment"
-)
+@hydra.main(version_base=None, config_path="conf", config_name="localization")
 def main(cfg: omegaconf.DictConfig) -> dict:  # type: ignore[type-arg]
     """Run the localization (N way forced choice) experiment."""
     model, tokenizer = experiment_setup.setup_experiment(cfg)

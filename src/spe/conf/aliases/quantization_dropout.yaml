@@ -1,6 +1,0 @@
-display_names:
-  DROPOUT: "QUANTIZATION"
-  NOISE: "DROPOUT"
-descriptions:
-  DROPOUT: "(weight precision reduction)"
-  NOISE: "(random neuron dropping)"

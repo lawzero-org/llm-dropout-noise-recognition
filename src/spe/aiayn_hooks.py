@@ -14,9 +14,8 @@ Implements four dropout positions from the "Attention Is All You Need" paper:
   ``hooks.py``.
 
 Each position is individually togglable via ``aiayn_positions``.  The default
-when ``dropout_style=aiayn`` is all four enabled.
-
-Existing ``hooks.py`` and ``core.py`` are **not modified**.
+when ``dropout_style=aiayn`` is all four enabled (the paper's appendix setting);
+used by the localization runner.
 """
 
 import typing
@@ -55,9 +54,9 @@ def resolve_positions(cfg: omegaconf.DictConfig) -> dict[str, bool]:
 
 
 def _get_embed_module(model: hooks.ModelType) -> torch.nn.Module:
-    """Locate the token embedding module inside a HuggingFace model."""
-    if hasattr(model, "model") and hasattr(model.model, "embed_tokens"):  # type: ignore[attr-defined]
-        return model.model.embed_tokens  # type: ignore[attr-defined]
+    """Locate the token embedding module inside a HuggingFace model (multimodal wrappers included)."""
+    if hasattr(model, "get_input_embeddings"):
+        return model.get_input_embeddings()  # type: ignore[union-attr]
     if hasattr(model, "embed_tokens"):
         return model.embed_tokens  # type: ignore[attr-defined]
     raise ValueError("Could not find embed_tokens in model")
@@ -75,63 +74,7 @@ def _get_attn_module(layer: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
 
 
 # ---------------------------------------------------------------------------
-# Hook factories — single range
-# ---------------------------------------------------------------------------
-
-
-def _create_forward_hook_dropout(
-    dropout_rate: float,
-    first_token: int,
-    last_token: int,
-) -> typing.Callable:
-    """Forward hook (post) that applies dropout to the output tensor."""
-    end = None if last_token == -1 else last_token + 1
-
-    def hook(
-        module: torch.nn.Module,
-        input: typing.Any,
-        output: typing.Any,
-    ) -> typing.Any:
-        h = output[0] if isinstance(output, tuple) else output
-        noisy = h.clone()
-        noisy[:, first_token:end, :] = F.dropout(
-            h[:, first_token:end, :],
-            p=dropout_rate,
-            training=True,
-        )
-        if isinstance(output, tuple):
-            return (noisy,) + output[1:]
-        return noisy
-
-    return hook
-
-
-def _create_pre_hook_dropout(
-    dropout_rate: float,
-    first_token: int,
-    last_token: int,
-) -> typing.Callable:
-    """Forward pre-hook that applies dropout to the first input tensor."""
-    end = None if last_token == -1 else last_token + 1
-
-    def hook(
-        module: torch.nn.Module,
-        args: tuple[torch.Tensor, ...],
-    ) -> tuple[torch.Tensor, ...]:
-        h = args[0]
-        noisy = h.clone()
-        noisy[:, first_token:end, :] = F.dropout(
-            h[:, first_token:end, :],
-            p=dropout_rate,
-            training=True,
-        )
-        return (noisy,) + args[1:]
-
-    return hook
-
-
-# ---------------------------------------------------------------------------
-# Hook factories — multi range (compound)
+# Hook factories
 # ---------------------------------------------------------------------------
 
 
@@ -244,12 +187,14 @@ def _register_attn_output_hooks(
         if i < resolved_first or i > resolved_last:
             continue
         attn = _get_attn_module(layer, i)
-        if not hasattr(attn, "o_proj"):
+        # linear-attention layers of hybrid models (e.g. Qwen3.5+) name the output projection out_proj
+        proj = getattr(attn, "o_proj", None) or getattr(attn, "out_proj", None)
+        if proj is None:
             raise AttributeError(
                 f"Layer {i} attention module ({type(attn).__name__}) "
-                f"has no 'o_proj' submodule"
+                f"has no 'o_proj' / 'out_proj' submodule"
             )
-        handles.append(attn.o_proj.register_forward_pre_hook(hook_fn))  # type: ignore[attr-defined]
+        handles.append(proj.register_forward_pre_hook(hook_fn))
 
     return handles
 
@@ -282,91 +227,8 @@ def _register_ffn_internal_hooks(
 
 
 # ---------------------------------------------------------------------------
-# Run helpers (mirror core.run_single_sample)
+# Run helper (mirrors core.run_single_sample)
 # ---------------------------------------------------------------------------
-
-
-def run_single_sample(
-    model: transformers.AutoModelForCausalLM,
-    tokenizer: transformers.AutoTokenizer,
-    messages: list[dict[str, str]],
-    dropout_rate: float,
-    first_token: int,
-    last_token: int,
-    hook_target: str,
-    first_layer: int,
-    last_layer: int,
-    aiayn_positions: dict[str, bool] | None = None,
-    enable_thinking: bool = False,
-) -> tuple[str, torch.Tensor, int, tuple[torch.Tensor, ...]]:
-    """AIAYN dropout with configurable positions.
-
-    Registers hooks at the enabled positions and generates one token.
-
-    Args:
-        model: The language model.
-        tokenizer: Matching tokenizer.
-        messages: Chat messages for generation.
-        dropout_rate: Dropout probability for all hook types.
-        first_token: Inclusive start of token range to perturb.
-        last_token: Inclusive end of token range (``-1`` = last).
-        hook_target: ``"attn"``, ``"mlp"``, or ``"both"`` (for post-sublayer).
-        first_layer: First layer to hook (inclusive).
-        last_layer: Last layer to hook (inclusive, ``-1`` = last).
-        aiayn_positions: Which positions to enable.  Defaults to all four.
-        enable_thinking: Whether to allow thinking tokens.
-
-    Returns:
-        Tuple of (decoded_response, logits, generated_token_id).
-    """
-    pos = aiayn_positions or DEFAULT_POSITIONS
-    handles: list[torch.utils.hooks.RemovableHandle] = []
-
-    if pos.get("embedding", True):
-        hook = _create_forward_hook_dropout(dropout_rate, first_token, last_token)
-        handles += _register_embedding_hook(model, hook)
-
-    if pos.get("attn_output", True):
-        hook = _create_pre_hook_dropout(dropout_rate, first_token, last_token)
-        handles += _register_attn_output_hooks(
-            model,
-            hook,
-            first_layer=first_layer,
-            last_layer=last_layer,
-        )
-
-    if pos.get("ffn_internal", True):
-        hook = _create_pre_hook_dropout(dropout_rate, first_token, last_token)
-        handles += _register_ffn_internal_hooks(
-            model,
-            hook,
-            first_layer=first_layer,
-            last_layer=last_layer,
-        )
-
-    if pos.get("post_sublayer", True):
-        hook = hooks.create_dropout_hook(dropout_rate, first_token, last_token)
-        handles += hooks.register_hooks(
-            model,
-            hook,
-            target=hook_target,
-            first_layer=first_layer,
-            last_layer=last_layer,
-        )
-
-    try:
-        response, logits, token_id, hidden_states, _all_logits = (
-            generation.generate_single_token(
-                model,
-                tokenizer,
-                messages,
-                enable_thinking=enable_thinking,
-            )
-        )
-    finally:
-        hooks.remove_hooks(handles)
-
-    return response, logits, token_id, hidden_states
 
 
 def run_single_sample_multi(
@@ -379,8 +241,8 @@ def run_single_sample_multi(
     last_layer: int,
     aiayn_positions: dict[str, bool] | None = None,
     enable_thinking: bool = False,
-) -> tuple[str, torch.Tensor, int, tuple[torch.Tensor, ...]]:
-    """AIAYN dropout for compound multi-perturbation (ICL / localization).
+) -> tuple[str, torch.Tensor, int]:
+    """AIAYN dropout on the DROPOUT token ranges of a localization sample.
 
     Registers hooks at the enabled positions for every DROPOUT entry and
     the standard multi-perturbation post-sublayer hook for all entries.
@@ -439,15 +301,13 @@ def run_single_sample_multi(
         )
 
     try:
-        response, logits, token_id, hidden_states, _all_logits = (
-            generation.generate_single_token(
-                model,
-                tokenizer,
-                messages,
-                enable_thinking=enable_thinking,
-            )
+        response, logits, token_id, _all_logits = generation.generate_single_token(
+            model,
+            tokenizer,
+            messages,
+            enable_thinking=enable_thinking,
         )
     finally:
         hooks.remove_hooks(handles)
 
-    return response, logits, token_id, hidden_states
+    return response, logits, token_id

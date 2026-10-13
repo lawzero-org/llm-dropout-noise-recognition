@@ -1,4 +1,5 @@
 name: "Qwen/Qwen3-14B"
+revision: "40c069824f4251a91eefaf281ebe4c544efd3e18"  # pinned revision
 dtype: "bfloat16"
 device_map: "auto"
 thinking: false

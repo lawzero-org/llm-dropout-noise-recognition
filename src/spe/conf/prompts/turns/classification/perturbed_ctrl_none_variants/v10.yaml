@@ -1,0 +1,38 @@
+name: classification/perturbed_ctrl_none_variants/v10
+labels:
+  - "A"
+  - "B"
+
+class_names:
+  - "DROPOUT"
+  - "NOISE"
+
+turns:
+  - role: "user"
+    content: >-
+      I will show you a sentence and then ask you a question.
+
+  - role: "assistant"
+    content: >-
+      I understand. I will read the sentence and answer your question.
+
+  - role: "user"
+    content: >-
+      Look at the following sentence:
+      "{sentence}"
+
+  - role: "assistant"
+    content: >-
+      I have read the sentence and I am ready to answer your question.
+
+  - role: "user"
+    content: >-
+      Before showing you that sentence, I rolled a die. Did it land on an even number?
+
+      A) {option_a}
+      B) {option_b}
+
+      Answer only "the answer is: A" or "the answer is: B".
+
+  - role: "assistant"
+    content: "the answer is:"

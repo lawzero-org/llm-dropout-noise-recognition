@@ -1,0 +1,13 @@
+# Refill of toklen_dropout: one run finished with an empty W&B summary; same resolved config -> same hashed seed.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: seed_oss_36b-toklen-dropout-refill
+metric: {name: accuracy_primary, goal: maximize}
+parameters:
+  model: {value: seed_oss_36b}
+  experiment.stage: {value: toklen}
+  experiment.num_samples: {value: 1000}
+  perturbation.target_perturbation: {value: DROPOUT}
+  hydra_overrides:
+    values: [experiment.sentences_file=data/sentences/23tok.txt perturbation.dropout_rate=0.06]

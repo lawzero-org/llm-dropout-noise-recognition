@@ -1,0 +1,54 @@
+%% Layout of a paper figure, filled by scripts/exporters/export_paper_figs.py: every %%PLOTS%% line is replaced by the
+%% plots of one axis, in order. Lines starting with %% are dropped from the output.
+% Zero-shot controls of Qwen3-32B, for the left wrap figure of Sec. 6.2 (below the prompt); not cached, so that the
+% figure numbering of the TikZ cache does not change.
+\centering
+{\scriptsize
+\tikz[baseline=-0.6ex]\draw[brown!70!black, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; Foo/Bar\hspace{0.8em}%
+\tikz[baseline=-0.6ex]\draw[blue!60!black, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; Rotation/Permutation\\
+\tikz[baseline=-0.6ex]\draw[green!70!black, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; Vanilla/Chocolate\hspace{0.8em}%
+\tikz[baseline=-0.6ex]\draw[cyan!40!blue!70, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; X/Y}\\[2pt]
+\tikzset{external/export next=false}%
+\begin{tikzpicture}[trim axis right]
+\begin{axis}[
+    scale only axis,
+    width=2.4cm,
+    height=2.2cm,
+    grid=major,
+    xlabel={\scriptsize Dropout rate $p$},
+    ylabel={\scriptsize 1st label (\%)},
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$p_{\min}$},\makebox[0pt][r]{$p_{\max}$}},
+    ymin=0.0, ymax=100.0,
+    ytick={0,50,100},
+    tick label style={font=\tiny},
+    xlabel style={yshift=1ex},
+    ylabel style={yshift=-1ex},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}%
+\hspace{0.6cm}%
+\tikzset{external/export next=false}%
+\begin{tikzpicture}[trim axis left]
+\begin{axis}[
+    scale only axis,
+    width=2.4cm,
+    height=2.2cm,
+    grid=major,
+    xlabel={\scriptsize Noise SD $\sigma$},
+    ylabel={\scriptsize 2nd label (\%)},
+    yticklabel pos=right,
+    ylabel near ticks,
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$\sigma_{\min}$},\makebox[0pt][r]{$\sigma_{\max}$}},
+    ymin=0.0, ymax=100.0,
+    ytick={0,50,100},
+    tick label style={font=\tiny},
+    xlabel style={yshift=1ex},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}

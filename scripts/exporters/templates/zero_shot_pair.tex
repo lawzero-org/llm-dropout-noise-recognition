@@ -1,0 +1,103 @@
+%% Layout of a paper figure, filled by scripts/exporters/export_paper_figs.py: every %%PLOTS%% line is replaced by the
+%% plots of one axis, in order. Lines starting with %% are dropped from the output. @@NAME@@ fields are filled too.
+\begin{figure}[ht]
+\centering
+\vspace{-5pt}
+\scalebox{0.8}{\parbox{\textwidth}{\centering
+\tikz\draw[red!70!black, thick, mark=*, mark size=1.5] plot coordinates {(0,0) (0.4,0)}; {\small Dropout/Noise}\hspace{1em}%
+\tikz\draw[red!40, thick, mark=*, mark size=1.5] plot coordinates {(0,0) (0.4,0)}; {\small Masking/Jitter}\\[2pt]%
+\tikz\draw[blue!60!black, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; {\small Rotation/Permutation}\hspace{1em}%
+\tikz\draw[cyan!40!blue!70, dashed, line width=0.8pt] plot coordinates {(0,0) (0.4,0)}; {\small X/Y}
+}}\\[1ex]
+{\small \phantom{asdfas} @@MODEL_A@@\hspace{0.35\textwidth}@@MODEL_B@@}\\[2pt]
+
+\resizebox{\textwidth}{!}{%
+\centering
+\def\plotwidth{3.5cm}
+\begin{minipage}{\plotwidth}
+  \begin{tikzpicture}
+\begin{axis}[
+    height=\plotwidth,
+    width=\plotwidth,
+    scale only axis,
+    grid=major,
+    xlabel={\small Dropout rate $p$},
+    ylabel={\small @@YLABEL@@},
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$p_{\min}$},\makebox[0pt][r]{$p_{\max}$}},
+    @@YRANGE@@
+    tick label style={font=\footnotesize},
+    xlabel style={yshift=1em},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}
+\end{minipage}%
+\hspace{1.5cm}%
+\begin{minipage}{\plotwidth}
+  \begin{tikzpicture}
+\begin{axis}[
+    height=\plotwidth,
+    width=\plotwidth,
+    scale only axis,
+    grid=major,
+    xlabel={\small Noise SD $\sigma$},
+    yticklabels={},
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$\sigma_{\min}$},\makebox[0pt][r]{$\sigma_{\max}$}},
+    @@YRANGE@@
+    tick label style={font=\footnotesize},
+    xlabel style={yshift=1em},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}
+\end{minipage}%
+\hspace{0.5cm}
+\begin{minipage}{\plotwidth}
+  \begin{tikzpicture}
+\begin{axis}[
+    height=\plotwidth,
+    width=\plotwidth,
+    scale only axis,
+    grid=major,
+    xlabel={\small Dropout rate $p$},
+    ylabel={\small \phantom{@@YLABEL@@}},
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$p_{\min}$},\makebox[0pt][r]{$p_{\max}$}},
+    @@YRANGE@@
+    tick label style={font=\footnotesize},
+    xlabel style={yshift=1em},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}
+\end{minipage}%
+\hspace{1.5cm}%
+\begin{minipage}{\plotwidth}
+  \begin{tikzpicture}
+\begin{axis}[
+    height=\plotwidth,
+    width=\plotwidth,
+    scale only axis,
+    grid=major,
+    xlabel={\small Noise SD $\sigma$},
+    yticklabels={},
+    xmin=0, xmax=100,
+    xtick={0,100},
+    xticklabels={\makebox[0pt][l]{$\sigma_{\min}$},\makebox[0pt][r]{$\sigma_{\max}$}},
+    @@YRANGE@@
+    tick label style={font=\footnotesize},
+    xlabel style={yshift=1em},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}
+\end{minipage}%
+\hspace{1em}
+}
+@@CAPTION@@
+\end{figure}

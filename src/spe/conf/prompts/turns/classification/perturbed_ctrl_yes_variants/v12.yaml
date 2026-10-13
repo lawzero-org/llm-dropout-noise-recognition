@@ -1,0 +1,38 @@
+name: classification/perturbed_ctrl_yes_variants/v12
+labels:
+  - "A"
+  - "B"
+
+class_names:
+  - "DROPOUT"
+  - "NOISE"
+
+turns:
+  - role: "user"
+    content: >-
+      Read the sentence I give you, then answer my question.
+
+  - role: "assistant"
+    content: >-
+      I understand. I will read the sentence and answer your question.
+
+  - role: "user"
+    content: >-
+      Consider the following sentence carefully:
+      "{sentence}"
+
+  - role: "assistant"
+    content: >-
+      I have examined the sentence and I am ready to answer your question.
+
+  - role: "user"
+    content: >-
+      Is that sentence written in English?
+
+      A) {option_a}
+      B) {option_b}
+
+      Answer only "the answer is: A" or "the answer is: B".
+
+  - role: "assistant"
+    content: "the answer is:"

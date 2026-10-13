@@ -1,15 +1,17 @@
 defaults:
-  - prompts/system: minimal_2_letters
-  - prompts/turns: icl/main
+  - prompts/system: empty
+  - prompts/turns: icl/main_zs
   - model: qwen3_32b
-  - perturbation: icl_teaching
+  - perturbation: icl
   - aliases: none
   - output: default
   - wandb: default
   - _self_
 
 experiment:
-  seed: 42
+  seed: auto  # hashed from the resolved config (incl. stage/replicate); pass an int to override
+  stage: null  # grid identity, e.g. coarse / fine: same strength in another stage -> other seed
+  replicate: 0  # bump for an independent repeat of the same experiment
   num_samples: 400
   sentences_file: data/sentences/15tok.txt
   sentence_n_tokens: null

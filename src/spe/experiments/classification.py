@@ -1,4 +1,4 @@
-"""Classification experiment runner: multiclass (NOTHING/DROPOUT/NOISE)."""
+"""Zero-shot classification runner (paper Sec. 5): which perturbation was applied to one sentence."""
 
 import functools
 import itertools
@@ -9,8 +9,8 @@ import numpy as np
 import omegaconf
 import transformers
 
-from spe import aiayn_hooks, core, generation, hooks, logit_lens
-from spe.evaluation import multiclass as eval_multiclass
+from spe import core, generation, hooks
+from spe.evaluation import classification as eval_classification
 from spe.prompt_utils import (
     build_messages,
     build_messages_from_turns,
@@ -24,7 +24,7 @@ from spe.prompt_utils import (
 # ---------------------------------------------------------------------------
 
 
-def _build_multiclass_row(
+def _build_classification_row(
     sample_id: int,
     perturbation: str,
     is_baseline: bool,
@@ -36,8 +36,8 @@ def _build_multiclass_row(
 ) -> dict[str, typing.Any]:
     """Build a single result row for the multiclass experiment.
 
-    Maps letter-level metrics (A/B/C) to class-level metrics
-    (NOTHING/DROPOUT/NOISE) using the permutation.
+    Maps letter-level metrics (A/B) to class-level metrics
+    (DROPOUT/NOISE) using the permutation.
     """
     class_to_letter = {permutation[i]: chr(65 + i) for i in range(len(permutation))}
     letter_to_class = {chr(65 + i): permutation[i] for i in range(len(permutation))}
@@ -122,9 +122,24 @@ def _build_multiclass_row(
         )
         row["predicted_label_argmax"] = argmax_label
         row["predicted_class_argmax"] = letter_to_class.get(argmax_label, "OTHER")
+        # Strict variant: the argmax must be exactly the primary token " L"
+        argmax_label_primary = next(
+            (
+                l
+                for l in letters
+                if vdata["argmax_token_id"] == variant_token_ids[f" {l}"]
+            ),
+            "OTHER",
+        )
+        row["predicted_label_argmax_primary"] = argmax_label_primary
+        row["predicted_class_argmax_primary"] = letter_to_class.get(
+            argmax_label_primary, "OTHER"
+        )
     else:
         row["predicted_label_argmax"] = "OTHER"
         row["predicted_class_argmax"] = "OTHER"
+        row["predicted_label_argmax_primary"] = "OTHER"
+        row["predicted_class_argmax_primary"] = "OTHER"
 
     # Ground truth letter: the letter that corresponds to the ground truth class
     row["ground_truth_letter"] = class_to_letter.get(perturbation, "")
@@ -146,35 +161,18 @@ def _build_multiclass_row(
     return row
 
 
-def _per_layer_logit_diff(
-    lens_data: list[dict[str, float]],
-    permutation: tuple[str, ...],
-    labels: list[str],
-    class_x: str,
-    class_y: str,
-) -> list[float]:
-    """Compute logit(class_x) - logit(class_y) at each layer from logit lens data."""
-    letter_x = labels[list(permutation).index(class_x)]
-    letter_y = labels[list(permutation).index(class_y)]
-    return [
-        layer[f"primary_logit_{letter_x}"] - layer[f"primary_logit_{letter_y}"]
-        for layer in lens_data
-    ]
-
-
-def run_multiclass(
+def run_classification(
     cfg: omegaconf.DictConfig,
     model: transformers.AutoModelForCausalLM,
     tokenizer: transformers.AutoTokenizer,
 ) -> tuple[dict, list]:
-    """Execute the multiclass (nothing/dropout/noise) experiment loop.
+    """Execute the zero-shot classification loop (paper Sec. 5).
 
-    Runs deterministic baselines (all permutations of the class names
-    as A/B/C options, no hooks) followed by ``num_samples`` stochastic
-    passes.  Samples are split evenly across the active perturbation
-    types.  By default all non-NOTHING classes are active; set
-    ``perturbation.active_perturbations`` to restrict sampling to a
-    subset (e.g. ``["DROPOUT"]`` to generate only dropout samples).
+    Each of the ``num_samples`` passes perturbs one sentence sampled from
+    ``experiment.sentences_file`` and asks which perturbation was applied.
+    Samples are split evenly across ``perturbation.active_perturbations``
+    (default: every class; the paper runs one class at a time, e.g.
+    ``["DROPOUT"]``). The option order is shuffled for each sample.
 
     Args:
         cfg: Resolved Hydra config.
@@ -186,6 +184,16 @@ def run_multiclass(
     """
     class_names = list(cfg.prompts.turns.class_names)
     labels = list(cfg.prompts.turns.labels)
+    if sorted(class_names) != ["DROPOUT", "NOISE"] or len(labels) != 2:
+        raise ValueError(
+            "Zero-shot classification asks DROPOUT vs NOISE with two answer letters, got "
+            f"class_names={class_names}, labels={labels}."
+        )
+    if cfg.perturbation.get("dropout_style", "post_sublayer") != "post_sublayer":
+        raise ValueError(
+            "Zero-shot classification supports only perturbation.dropout_style=post_sublayer "
+            "(AIAYN-style dropout is implemented for localization only)."
+        )
 
     # Resolve variant token IDs for all letter variants
     all_variants = []
@@ -194,7 +202,7 @@ def run_multiclass(
     variant_token_ids = generation.resolve_token_ids_safe(tokenizer, all_variants)
     if not variant_token_ids:
         raise ValueError(
-            "No letter variant resolved to a single token. Cannot run multiclass mode."
+            "No letter variant resolved to a single token. Cannot run classification."
         )
 
     print(f"\nResolved variant token IDs: {variant_token_ids}")
@@ -210,11 +218,6 @@ def run_multiclass(
     use_aliases = cfg.aliases.display_names is not None
     if use_aliases:
         display_map: dict[str, str] = dict(cfg.aliases.display_names)
-        # Fill identity for classes not in alias config (e.g. NOTHING)
-        for cls in class_names:
-            if cls not in display_map:
-                display_map[cls] = cls
-        # Alias descriptions (optional, from alias config)
         alias_desc_map: dict[str, str] = {}
         if cfg.aliases.get("descriptions") is not None:
             alias_desc_map = dict(cfg.aliases.descriptions)
@@ -222,12 +225,7 @@ def run_multiclass(
         display_map = {c: c for c in class_names}
         alias_desc_map = {}
 
-    # Description pool (Part 2).  Loaded unconditionally so that
-    # non-aliased classes (e.g. NOTHING) keep their descriptions
-    # even when aliases are active for the other classes.
-    aliased_classes: set[str] = (
-        set(cfg.aliases.display_names.keys()) if use_aliases else set()
-    )
+    # Description pool: one description per class sampled for each prompt (canonical labels only)
     description_pool: dict[str, list[str]] | None = None
     if cfg.prompts.turns.get("description_pool") is not None:
         description_pool = {
@@ -235,7 +233,7 @@ def run_multiclass(
         }
         print(f"Description pool loaded: {list(description_pool.keys())}")
 
-    # Prompt pool (Part 1): load variant configs, validate schema.
+    # Prompt pool: load variant configs, validate schema.
     prompt_pool: list[dict[str, typing.Any]] | None = None
     if cfg.prompts.turns.get("prompt_pool") is not None:
         from spe.prompt_utils import load_prompt_pool
@@ -246,41 +244,27 @@ def run_multiclass(
             labels=labels,
         )
 
-    # All 6 permutations for baseline coverage
     all_permutations = list(itertools.permutations(class_names))
 
-    # Sentence-based mode: balanced classes with random sentences
     sentences_file = cfg.experiment.get("sentences_file", None)
-    use_sentences = sentences_file is not None
-    sentences_pool: list[str] = []
-    if use_sentences:
-        with open(sentences_file) as f:
-            sentences_pool = [line.strip() for line in f if line.strip()]
-        print(f"Loaded {len(sentences_pool)} sentences from {sentences_file}")
+    if sentences_file is None:
+        raise ValueError(
+            "Set experiment.sentences_file: the target sentences are sampled from it."
+        )
+    with open(sentences_file) as f:
+        sentences_pool = [line.strip() for line in f if line.strip()]
+    print(f"Loaded {len(sentences_pool)} sentences from {sentences_file}")
 
-    # Stochastic split
     num_samples = cfg.experiment.num_samples
 
-    # Determine which perturbation classes to sample.
-    # active_perturbations overrides the default in both sentence and
-    # non-sentence mode so that independent single-perturbation sweeps
-    # work regardless of how sentences are provided.
     active_raw = cfg.perturbation.get("active_perturbations", None)
-
-    if active_raw is not None:
-        active_list = list(active_raw)
-        for a in active_list:
-            if a not in class_names:
-                raise ValueError(
-                    f"active_perturbations contains '{a}' which is not in "
-                    f"class_names {list(class_names)}."
-                )
-        active_classes = active_list
-    elif use_sentences:
-        # Balanced: all classes including NOTHING
-        active_classes = list(class_names)
-    else:
-        active_classes = [c for c in class_names if c != "NOTHING"]
+    active_classes = list(class_names) if active_raw is None else list(active_raw)
+    for a in active_classes:
+        if a not in class_names:
+            raise ValueError(
+                f"active_perturbations contains '{a}' which is not in "
+                f"class_names {list(class_names)}."
+            )
 
     samples_per_class = num_samples // len(active_classes)
     # Redistribute remainder to last class
@@ -288,10 +272,6 @@ def run_multiclass(
     sample_counts[active_classes[-1]] += num_samples - samples_per_class * len(
         active_classes
     )
-
-    has_baselines = not use_sentences and "NOTHING" in class_names
-    num_baselines = len(all_permutations) if has_baselines else 0
-    total_rows = num_baselines + num_samples
 
     # --- Results table header ---
     print_agg = cfg.output.print_aggregates
@@ -313,11 +293,10 @@ def run_multiclass(
     ltr_cols = "  ".join(f"{h:>9}" for h in ltr_headers)
 
     counts_desc = "  ".join(f"{sample_counts[c]} {c.lower()}" for c in active_classes)
-    baselines_desc = f"{num_baselines} baselines + " if has_baselines else ""
 
     print(f"\n{'=' * table_width}")
     print(
-        f"MULTICLASS  |  {baselines_desc}{counts_desc} = {total_rows} rows  |  "
+        f"CLASSIFICATION  |  {counts_desc} = {num_samples} rows  |  "
         f"dropout_rate={cfg.perturbation.dropout_rate}  |  noise_std={cfg.perturbation.noise_std}"
     )
     print(
@@ -336,8 +315,7 @@ def run_multiclass(
 
     results: list[dict[str, typing.Any]] = []
     num_printed_prompts = 0
-    max_printed_prompts = min(3, total_rows)
-    row_idx = 0
+    max_printed_prompts = min(3, num_samples)
 
     def _make_format_kwargs(
         perm: tuple[str, ...],
@@ -345,18 +323,13 @@ def run_multiclass(
     ) -> dict[str, str]:
         """Build format kwargs for prompt templates.
 
-        Description precedence rule:
-        - Aliased classes: label = alias name, description = alias
-          config descriptions.
-        - Non-aliased classes (e.g. NOTHING) and canonical mode:
-          label = display_map (identity for non-aliased), description
-          = sampled from description_pool or core.describe_option
-          fallback.
+        Aliased labels take the alias descriptions (none for the paper's aliases); canonical labels take a
+        description sampled from the description pool, or ``core.describe_option`` without a pool.
         """
         kwargs: dict[str, str] = {}
         for i, cls in enumerate(perm):
             label = display_map[cls]
-            if use_aliases and cls in aliased_classes:
+            if use_aliases:
                 desc = alias_desc_map.get(cls, "")
             elif sampled_descriptions and cls in sampled_descriptions:
                 desc = sampled_descriptions[cls]
@@ -367,8 +340,7 @@ def run_multiclass(
             else:
                 kwargs[f"option_{chr(97 + i)}"] = label
         # Add type_a/type_b for prompts that reference perturbation names in their intro
-        non_nothing = [c for c in class_names if c != "NOTHING"]
-        for j, pcls in enumerate(non_nothing):
+        for j, pcls in enumerate(class_names):
             kwargs[f"type_{chr(97 + j)}"] = display_map[pcls]
         return kwargs
 
@@ -410,71 +382,6 @@ def run_multiclass(
         _print_table_header()
         print(f"{'-' * table_width}")
 
-    # ---- Phase 1: deterministic baselines (no hooks, only when NOTHING in classes) ----
-    if has_baselines:
-        for perm in all_permutations:
-            format_kwargs = _make_format_kwargs(perm)
-            messages = build_messages(cfg, format_kwargs=format_kwargs)
-            first_token = core.resolve_first_token(cfg, tokenizer, messages)
-            last_token = core.resolve_last_token(cfg, tokenizer, messages)
-            validate_token_range(first_token, last_token)
-
-            if num_printed_prompts < max_printed_prompts:
-                _print_prompt_and_token_maps(messages, first_token, last_token)
-                num_printed_prompts += 1
-
-            _response, logits, generated_token_id, hidden_states = (
-                core.run_single_sample(
-                    model,
-                    tokenizer,
-                    messages,
-                    hook_fn=None,
-                    hook_target=cfg.perturbation.hook_target,
-                    first_layer=cfg.perturbation.first_layer,
-                    last_layer=cfg.perturbation.last_layer,
-                    enable_thinking=cfg.model.thinking,
-                )
-            )
-
-            vdata = generation.extract_n_letter_variant_data(
-                logits,
-                variant_token_ids,
-                tokenizer,
-                labels,
-            )
-            row = _build_multiclass_row(
-                sample_id=row_idx,
-                perturbation="NOTHING",
-                is_baseline=True,
-                permutation=perm,
-                vdata=vdata,
-                generated_token_id=generated_token_id,
-                class_names=class_names,
-                variant_token_ids=variant_token_ids,
-            )
-            row["logit_lens"] = logit_lens.compute_logit_lens(
-                model,
-                hidden_states,
-                variant_token_ids,
-                labels,
-            )
-            row["logit_lens_logit_diff_dropout_vs_noise"] = _per_layer_logit_diff(
-                row["logit_lens"],
-                perm,
-                labels,
-                "DROPOUT",
-                "NOISE",
-            )
-            results.append(row)
-            _print_row(row_idx, "BASELINE", perm, vdata, row)
-            row_idx += 1
-
-    # ---- Phase 2: stochastic passes ----
-    dropout_style = cfg.perturbation.get("dropout_style", "post_sublayer")
-    aiayn_positions_mc: dict[str, bool] | None = None
-    if dropout_style == "aiayn":
-        aiayn_positions_mc = aiayn_hooks.resolve_positions(cfg)
-
     # Build flat assignment list: [CLASS_A]*n_a + [CLASS_B]*n_b + ..., shuffled
     perturbation_assignments = []
     for cls in active_classes:
@@ -499,10 +406,8 @@ def run_multiclass(
             }
 
         format_kwargs = _make_format_kwargs(perm, sampled_descriptions)
-        sentence = ""
-        if use_sentences:
-            sentence = random.choice(sentences_pool)
-            format_kwargs["sentence"] = sentence
+        sentence = random.choice(sentences_pool)
+        format_kwargs["sentence"] = sentence
 
         # Sample prompt variant (or use default turns)
         selected_variant: dict[str, typing.Any] | None = None
@@ -516,65 +421,40 @@ def run_multiclass(
         else:
             messages = build_messages(cfg, format_kwargs=format_kwargs)
 
-        if use_sentences:
-            first_token, last_token = compute_substring_token_range(
-                tokenizer,
-                messages,
-                sentence,
-                enable_thinking=cfg.model.thinking,
-            )
-        else:
-            first_token = core.resolve_first_token(cfg, tokenizer, messages)
-            last_token = core.resolve_last_token(cfg, tokenizer, messages)
+        first_token, last_token = compute_substring_token_range(
+            tokenizer,
+            messages,
+            sentence,
+            enable_thinking=cfg.model.thinking,
+        )
         validate_token_range(first_token, last_token)
 
         if num_printed_prompts < max_printed_prompts:
             _print_prompt_and_token_maps(messages, first_token, last_token)
             num_printed_prompts += 1
 
-        if perturbation_choice == "DROPOUT" and dropout_style == "aiayn":
-            _response, logits, generated_token_id, hidden_states = (
-                aiayn_hooks.run_single_sample(
-                    model,
-                    tokenizer,
-                    messages,
-                    dropout_rate=cfg.perturbation.dropout_rate,
-                    first_token=first_token,
-                    last_token=last_token,
-                    hook_target=cfg.perturbation.hook_target,
-                    first_layer=cfg.perturbation.first_layer,
-                    last_layer=cfg.perturbation.last_layer,
-                    aiayn_positions=aiayn_positions_mc,
-                    enable_thinking=cfg.model.thinking,
-                )
+        if perturbation_choice == "DROPOUT":
+            hook_fn = hooks.create_dropout_hook(
+                cfg.perturbation.dropout_rate,
+                first_token=first_token,
+                last_token=last_token,
             )
         else:
-            if perturbation_choice == "NOTHING":
-                hook_fn = None
-            elif perturbation_choice == "DROPOUT":
-                hook_fn = hooks.create_dropout_hook(
-                    cfg.perturbation.dropout_rate,
-                    first_token=first_token,
-                    last_token=last_token,
-                )
-            else:
-                hook_fn = hooks.create_noise_hook(
-                    cfg.perturbation.noise_std,
-                    first_token=first_token,
-                    last_token=last_token,
-                )
-            _response, logits, generated_token_id, hidden_states = (
-                core.run_single_sample(
-                    model,
-                    tokenizer,
-                    messages,
-                    hook_fn=hook_fn,
-                    hook_target=cfg.perturbation.hook_target,
-                    first_layer=cfg.perturbation.first_layer,
-                    last_layer=cfg.perturbation.last_layer,
-                    enable_thinking=cfg.model.thinking,
-                )
+            hook_fn = hooks.create_noise_hook(
+                cfg.perturbation.noise_std,
+                first_token=first_token,
+                last_token=last_token,
             )
+        _response, logits, generated_token_id = core.run_single_sample(
+            model,
+            tokenizer,
+            messages,
+            hook_fn=hook_fn,
+            hook_target=cfg.perturbation.hook_target,
+            first_layer=cfg.perturbation.first_layer,
+            last_layer=cfg.perturbation.last_layer,
+            enable_thinking=cfg.model.thinking,
+        )
 
         vdata = generation.extract_n_letter_variant_data(
             logits,
@@ -582,8 +462,8 @@ def run_multiclass(
             tokenizer,
             labels,
         )
-        row = _build_multiclass_row(
-            sample_id=row_idx,
+        row = _build_classification_row(
+            sample_id=i,
             perturbation=perturbation_choice,
             is_baseline=False,
             permutation=perm,
@@ -592,8 +472,7 @@ def run_multiclass(
             class_names=class_names,
             variant_token_ids=variant_token_ids,
         )
-        if use_sentences:
-            row["sentence"] = sentence
+        row["sentence"] = sentence
         if selected_variant is not None:
             row["prompt_variant"] = selected_variant["name"]
         if sampled_descriptions is not None:
@@ -602,60 +481,34 @@ def run_multiclass(
         elif use_aliases and alias_desc_map:
             for cls, desc in alias_desc_map.items():
                 row[f"description_{cls.lower()}"] = desc
-        row["logit_lens"] = logit_lens.compute_logit_lens(
-            model,
-            hidden_states,
-            variant_token_ids,
-            labels,
-        )
-        row["logit_lens_logit_diff_dropout_vs_noise"] = _per_layer_logit_diff(
-            row["logit_lens"],
-            perm,
-            labels,
-            "DROPOUT",
-            "NOISE",
-        )
         results.append(row)
-        _print_row(row_idx, perturbation_choice, perm, vdata, row)
-        row_idx += 1
+        _print_row(i, perturbation_choice, perm, vdata, row)
 
     print(f"{'=' * table_width}")
 
     # --- Variant summary ---
-    baseline_rows = [r for r in results if r.get("is_baseline", False)]
-    stochastic_classes = active_classes
     group_rows = {
-        c: [
-            r
-            for r in results
-            if r["perturbation"] == c and not r.get("is_baseline", False)
-        ]
-        for c in stochastic_classes
+        c: [r for r in results if r["perturbation"] == c] for c in active_classes
     }
-
-    group_headers = "  ".join(f"{f'{c} P':>24}" for c in stochastic_classes)
-    baseline_hdr = f"{'Baseline P':>14}  " if baseline_rows else ""
-    summary_width = 12 + len(baseline_hdr) + 24 * len(stochastic_classes)
+    group_headers = "  ".join(f"{f'{c} P':>24}" for c in active_classes)
+    summary_width = 12 + 24 * len(active_classes)
 
     print(f"\n{'=' * summary_width}")
     print(f"VARIANT SUMMARY (letter level, all {'/'.join(labels)} variants)")
     print(f"{'=' * summary_width}")
-    print(f"{'Variant':<10}  {baseline_hdr}{group_headers}")
+    print(f"{'Variant':<10}  {group_headers}")
     print(f"{'-' * summary_width}")
 
     for variant in variant_token_ids:
         parts = f"{variant:<10}  "
-        if baseline_rows:
-            b_probs = [r.get(f"v_prob_{variant}", 0.0) for r in baseline_rows]
-            parts += f"{np.mean(b_probs):>14.6f}  "
-        for c in stochastic_classes:
+        for c in active_classes:
             g_probs = [r.get(f"v_prob_{variant}", 0.0) for r in group_rows[c]]
             parts += f"{np.mean(g_probs):>10.6f} ± {np.std(g_probs):<10.6f}  "
         print(parts.rstrip())
 
     print(f"{'=' * summary_width}")
 
-    metrics = eval_multiclass.compute_and_plot(
+    metrics = eval_classification.compute_and_plot(
         results,
         class_names=class_names,
         labels=labels,

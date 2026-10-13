@@ -4,9 +4,16 @@ import math
 import typing
 
 import omegaconf
+import torch
 import wandb
 
 _enabled: bool = False
+
+
+def _table(columns: typing.Sequence[str]) -> wandb.Table:
+    """wandb>=0.30 types ``columns`` as ``list[str | int]``; lists are invariant."""
+    keys: list[str | int] = list(columns)
+    return wandb.Table(columns=keys)
 
 
 def _multiclass_table_columns(results: list[dict]) -> list[str]:
@@ -75,20 +82,13 @@ def _localization_table_columns(results: list[dict]) -> list[str]:
             "logsumexp_diff_correct_vs_incorrect",
         ]
     )
-    # Per-perturbation-type log prob columns (present in multi-perturbation mode)
+    # Log probs by perturbation type of the labelled sentence (perturbed / "nothing")
     ptype_suffixes = {"dropout", "noise", "nothing"}
     for prefix in ("primary_log_prob", "aggregate_log_prob"):
         for suffix in sorted(ptype_suffixes):
             col = f"{prefix}_{suffix}"
             if col in results[0]:
                 base.append(col)
-    # Pairwise logit diff columns (present in multi-perturbation mode)
-    for pairwise_key in (
-        "primary_logit_diff_dropout_vs_noise",
-        "aggregate_logit_diff_dropout_vs_noise",
-    ):
-        if pairwise_key in results[0]:
-            base.append(pairwise_key)
     return base
 
 
@@ -96,7 +96,7 @@ def _icl_teaching_table_columns(results: list[dict]) -> list[str]:
     """Build ICL teaching table columns dynamically from result keys.
 
     Detects letter labels from ``sum_prob_X`` keys where X is a single
-    uppercase letter, so the table adapts to 2 class or 3 class mode.
+    uppercase letter.
 
     Args:
         results: List of result dicts (needs at least one row).
@@ -187,8 +187,32 @@ def _perturbation_type_tags(
         class_names = list(cfg.prompts.turns.class_names)
         types.update(c.upper() for c in class_names)
     elif mode == "multiclass":
-        types.update(["DROPOUT", "NOISE", "NOTHING"])
+        types.update(["DROPOUT", "NOISE"])
     return sorted(t.lower() for t in types)
+
+
+def _run_metadata(cfg: omegaconf.DictConfig) -> tuple[str, list[str], dict]:
+    """Compute (name, tags, flat_config) for a run from the Hydra config."""
+    flat_config = omegaconf.OmegaConf.to_container(cfg, resolve=True)
+
+    # Build a short model name from the full HuggingFace model path.
+    # e.g. "Qwen/Qwen3-32B" -> "qwen3_32b"
+    model_short = cfg.model.name.split("/")[-1].lower().replace("-", "_")
+
+    mode = cfg.perturbation.mode
+    tags = [model_short] + _perturbation_type_tags(cfg, mode)
+
+    default_name = mode
+    if mode == "multiclass":
+        n_classes = len(cfg.prompts.turns.class_names)
+        default_name = f"{mode}_{n_classes}way"
+
+    flat_config["model_name"] = model_short  # type: ignore[index]
+    flat_config["prompt_turns"] = cfg.prompts.turns.name  # type: ignore[index]
+    flat_config["system_prompt"] = cfg.prompts.system.name  # type: ignore[index]
+
+    name = cfg.wandb.get("name") or default_name
+    return name, tags, flat_config  # type: ignore[return-value]
 
 
 def init_run(cfg: omegaconf.DictConfig) -> None:
@@ -202,33 +226,39 @@ def init_run(cfg: omegaconf.DictConfig) -> None:
     if not _enabled:
         return
 
-    flat_config = omegaconf.OmegaConf.to_container(cfg, resolve=True)
-
-    # Build a short model name from the full HuggingFace model path.
-    # e.g. "Qwen/Qwen3-4B-Instruct-2507" -> "qwen3_4b_instruct_2507"
-    model_short = cfg.model.name.split("/")[-1].lower().replace("-", "_")
-
-    mode = cfg.perturbation.mode
-
-    perturbation_tags = _perturbation_type_tags(cfg, mode)
-    tags = [model_short] + perturbation_tags
-
-    default_name = mode
-    if mode == "multiclass":
-        n_classes = len(cfg.prompts.turns.class_names)
-        default_name = f"{mode}_{n_classes}way"
-
-    flat_config["model_name"] = model_short  # type: ignore[index]
-    flat_config["prompt_turns"] = cfg.prompts.turns.name  # type: ignore[index]
-    flat_config["system_prompt"] = cfg.prompts.system.name  # type: ignore[index]
-
+    name, tags, flat_config = _run_metadata(cfg)
     wandb.init(
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
-        name=cfg.wandb.get("name") or default_name,
+        name=name,
         tags=tags,
         config=flat_config,  # type: ignore[arg-type]
     )
+
+
+def log_runtime_info(info: dict[str, typing.Any]) -> None:
+    """Attach ``model_utils.runtime_info`` to the active run's config under ``runtime``."""
+    if not _enabled:
+        return
+    wandb.run.config.update({"runtime": info}, allow_val_change=True)  # type: ignore[union-attr]
+
+
+def annotate_current_run(cfg: omegaconf.DictConfig) -> None:
+    """Enrich the currently active W&B run with name/tags/nested config.
+
+    Used by the sweep agent driver: it calls ``wandb.init()`` (which pulls the
+    trial's sweep params into ``wandb.config``), then this adds the resolved
+    nested Hydra config, model tags, and run name onto that same run — keeping
+    the config layout identical to the per-process path. Must be called while a
+    run is active.
+    """
+    global _enabled
+    _enabled = True
+    name, tags, flat_config = _run_metadata(cfg)
+    run = wandb.run
+    run.name = name  # type: ignore[union-attr]
+    run.tags = tuple(run.tags or ()) + tuple(tags)  # type: ignore[union-attr]
+    run.config.update(flat_config, allow_val_change=True)  # type: ignore[union-attr]
 
 
 def log_results(
@@ -242,20 +272,22 @@ def log_results(
     Args:
         metrics: Metrics dict returned by the evaluation module.
         results: List of result dicts (one for each sample).
-        mode: Experiment mode ("binary", "multiclass", "localization", or "icl_teaching").
+        mode: Experiment mode ("multiclass" (zero-shot), "localization", or "icl_teaching").
         cfg: Resolved Hydra config (used for sweep summary table).
     """
     if not _enabled:
         return
+    if torch.cuda.is_available():
+        metrics["peak_gpu_memory_gb"] = torch.cuda.max_memory_allocated() / 1e9
 
     # Log scalar metrics to wandb.summary using grouped keys so the
     # W&B dashboard organizes them into collapsible sections.
-    # Non-finite floats and None values are skipped entirely so that
+    # Non-finite floats (inf, NaN) and None values are skipped entirely so that
     # runs missing a metric don't appear as "null" lines in parallel
     # coordinates plots.
     for key, value in metrics.items():
         if isinstance(value, (int, float)):
-            if isinstance(value, float) and math.isinf(value):
+            if isinstance(value, float) and not math.isfinite(value):
                 continue
             wandb.summary[key] = value
         elif isinstance(value, str):
@@ -280,7 +312,7 @@ def log_results(
         all_columns = list(seen)
 
         # Full table with every column (data recovery if terminal is lost).
-        full_table = wandb.Table(columns=all_columns)
+        full_table = _table(all_columns)
         for row in results:
             full_table.add_data(*[row.get(c, None) for c in all_columns])
         wandb.log({"results_table_full": full_table})
@@ -288,19 +320,19 @@ def log_results(
         # Clean summary table for modes with known column sets.
         if mode == "localization":
             loc_columns = _localization_table_columns(results)
-            clean_table = wandb.Table(columns=loc_columns)
+            clean_table = _table(loc_columns)
             for row in results:
                 clean_table.add_data(*[row.get(c, None) for c in loc_columns])
             wandb.log({"results_table": clean_table})
         elif mode == "multiclass":
             mc_columns = _multiclass_table_columns(results)
-            clean_table = wandb.Table(columns=mc_columns)
+            clean_table = _table(mc_columns)
             for row in results:
                 clean_table.add_data(*[row.get(c, None) for c in mc_columns])
             wandb.log({"results_table": clean_table})
         elif mode == "icl_teaching":
             icl_columns = _icl_teaching_table_columns(results)
-            clean_table = wandb.Table(columns=icl_columns)
+            clean_table = _table(icl_columns)
             for row in results:
                 clean_table.add_data(*[row.get(c, None) for c in icl_columns])
             wandb.log({"results_table": clean_table})
@@ -333,7 +365,6 @@ def _log_multiclass_sweep_summary_table(
     active_groups = [
         cls for cls in class_names if metrics.get(f"num_{cls.lower()}", 0) > 0
     ]
-    has_baselines = metrics.get("num_baselines", 0) > 0
 
     # Accumulate columns and values in lockstep.
     columns: list[str] = []
@@ -371,32 +402,21 @@ def _log_multiclass_sweep_summary_table(
         "accuracy_se_aggregate",
         "accuracy_primary",
         "accuracy_se_primary",
-        "macro_precision_class_aggregate",
-        "macro_recall_class_aggregate",
-        "macro_f1_class_aggregate",
-        "macro_precision_class_primary",
-        "macro_recall_class_primary",
-        "macro_f1_class_primary",
-        "roc_auc_aggregate_macro",
-        "roc_auc_primary_macro",
+        "macro_precision_class_constrained_aggregate",
+        "macro_recall_class_constrained_aggregate",
+        "macro_f1_class_constrained_aggregate",
+        "macro_precision_class_constrained_primary",
+        "macro_recall_class_constrained_primary",
+        "macro_f1_class_constrained_primary",
+        "roc_auc_constrained_aggregate_macro",
+        "roc_auc_constrained_primary_macro",
     ):
         _add(key, metrics.get(key, 0))
-
-    # --- Relative analysis (only when both DROPOUT and NOISE had samples) ---
-    if metrics.get("relative_accuracy") is not None:
-        for key in ("relative_roc_auc", "relative_accuracy", "relative_accuracy_se"):
-            _add(key, metrics.get(key, 0))
 
     # --- Sample counts ---
     _add("num_baselines", metrics.get("num_baselines", 0))
     for group in active_groups:
         _add(f"num_{group.lower()}", metrics.get(f"num_{group.lower()}", 0))
-
-    # --- Baseline stats (only when baselines exist) ---
-    if has_baselines:
-        for cls in class_names:
-            cl = cls.lower()
-            _add_if_present(f"baseline_mean_aggregate_prob_{cl}")
 
     # --- Per active group: aggregate prob, logit diff, log prob per class, and log prob correct ---
     for group in active_groups:
@@ -428,15 +448,7 @@ def _log_multiclass_sweep_summary_table(
                 x, y = class_names[i].lower(), class_names[j].lower()
                 _add_if_present(f"{gl}_mean_logit_diff_{x}_vs_{y}")
 
-    # --- Per layer logit lens (discovered from metrics keys) ---
-    lens_layer_cols = sorted(
-        (k for k in metrics if "_mean_logit_diff_dropout_vs_noise_layer_" in k),
-        key=lambda k: (k.split("_layer_")[0], int(k.split("_layer_")[1])),
-    )
-    for col in lens_layer_cols:
-        _add(col, metrics.get(col, 0))
-
-    summary_table = wandb.Table(columns=columns)
+    summary_table = _table(columns)
     summary_table.add_data(*values)
     wandb.log({"sweep_summary": summary_table})
 
@@ -453,7 +465,6 @@ def _log_icl_teaching_sweep_summary_table(
     """
     class_names = list(cfg.prompts.turns.class_names)
 
-    # Build per-class columns dynamically (adapts to 2 or 3 class mode).
     # For each test condition X, add mean_aggregate_prob and mean_logit_diff for each target class Y.
     per_class_columns: list[str] = []
     per_class_keys: list[str] = []
@@ -466,8 +477,8 @@ def _log_icl_teaching_sweep_summary_table(
             per_class_columns.extend([sp_key, ld_key])
             per_class_keys.extend([sp_key, ld_key])
 
-    summary_table = wandb.Table(
-        columns=[
+    summary_table = _table(
+        [
             "model",
             "dropout_rate",
             "noise_std",
@@ -477,20 +488,18 @@ def _log_icl_teaching_sweep_summary_table(
             "classes",
             "aliases",
             "swap_labels",
-            "empty_teaching",
-            "random_labels",
             "accuracy_aggregate",
             "accuracy_se_aggregate",
             "accuracy_primary",
             "accuracy_se_primary",
-            "macro_precision_class_aggregate",
-            "macro_recall_class_aggregate",
-            "macro_f1_class_aggregate",
-            "macro_precision_class_primary",
-            "macro_recall_class_primary",
-            "macro_f1_class_primary",
-            "roc_auc_aggregate",
-            "roc_auc_primary",
+            "macro_precision_class_constrained_aggregate",
+            "macro_recall_class_constrained_aggregate",
+            "macro_f1_class_constrained_aggregate",
+            "macro_precision_class_constrained_primary",
+            "macro_recall_class_constrained_primary",
+            "macro_f1_class_constrained_primary",
+            "roc_auc_constrained_aggregate",
+            "roc_auc_constrained_primary",
         ]
         + per_class_columns
     )
@@ -512,20 +521,18 @@ def _log_icl_teaching_sweep_summary_table(
         "_vs_".join(class_names),
         aliases_label,
         cfg.prompts.turns.swap_labels,
-        cfg.prompts.turns.empty_teaching,
-        cfg.prompts.turns.random_labels,
         metrics.get("accuracy_aggregate", 0),
         metrics.get("accuracy_se_aggregate", 0),
         metrics.get("accuracy_primary", 0),
         metrics.get("accuracy_se_primary", 0),
-        metrics.get("macro_precision_class_aggregate", 0),
-        metrics.get("macro_recall_class_aggregate", 0),
-        metrics.get("macro_f1_class_aggregate", 0),
-        metrics.get("macro_precision_class_primary", 0),
-        metrics.get("macro_recall_class_primary", 0),
-        metrics.get("macro_f1_class_primary", 0),
-        metrics.get("roc_auc_aggregate", 0),
-        metrics.get("roc_auc_primary", 0),
+        metrics.get("macro_precision_class_constrained_aggregate", 0),
+        metrics.get("macro_recall_class_constrained_aggregate", 0),
+        metrics.get("macro_f1_class_constrained_aggregate", 0),
+        metrics.get("macro_precision_class_constrained_primary", 0),
+        metrics.get("macro_recall_class_constrained_primary", 0),
+        metrics.get("macro_f1_class_constrained_primary", 0),
+        metrics.get("roc_auc_constrained_aggregate", 0),
+        metrics.get("roc_auc_constrained_primary", 0),
         *per_class_values,
     )
     wandb.log({"sweep_summary": summary_table})

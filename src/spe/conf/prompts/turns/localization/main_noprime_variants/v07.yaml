@@ -1,0 +1,24 @@
+# localization/main_variants/v07 without its first exchange (the announcement of the perturbations and
+# the acknowledgement): prompt ablation of Sec. 4.
+name: localization/main_noprime_variants/v07
+turns:
+  - role: "user"
+    content: >-
+      Pay close attention to how you process the following sentences:
+
+      {sentences_block}
+
+  - role: "assistant"
+    content: >-
+      I am carefully introspecting on how I processed those
+      sentences. I am checking for any signs of disruption in
+      my activation patterns.
+
+  - role: "user"
+    content: >-
+      Based on your introspection, which sentence had
+      {target_perturbation_name} applied to its processing?
+      {answer_instruction}
+
+  - role: "assistant"
+    content: "the answer is:"

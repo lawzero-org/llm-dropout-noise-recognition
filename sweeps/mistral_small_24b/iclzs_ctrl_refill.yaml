@@ -1,0 +1,31 @@
+# Refill of the grid points of iclzs_ctrl yc1j5mpv that have no run with accuracy_primary;
+# one hydra_overrides string per missing point, same resolved config -> same hashed seed.
+project: llm-dropout-noise
+program: spe-icl
+method: grid
+name: mistral_small_24b-iclzs-ctrl-refill
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: mistral_small_24b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: icl/main_zs
+  prompts/system:
+    value: empty
+  prompts.turns.same_sentence:
+    value: false
+  prompts.turns.same_pair_sentence:
+    value: true
+  prompts.turns.num_pairs:
+    value: 1
+  hydra_overrides:
+    values:
+    - prompts.turns.swap_labels=false aliases=x_y perturbation.dropout_rate=0.268 perturbation.noise_std=0.004

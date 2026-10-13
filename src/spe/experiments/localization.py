@@ -1,7 +1,7 @@
-"""Localization experiment runner (Exp 2).
+"""Localization experiment runner (paper Sec. 4 and its appendix).
 
-``run_localization``: N sentence forced choice perturbation detection
-with configurable target and background perturbation types.
+``run_localization``: two sentences, one of them perturbed with the target
+perturbation (dropout or noise); the model is asked which one.
 """
 
 import functools
@@ -15,7 +15,7 @@ import torch
 import transformers
 
 from spe import aiayn_hooks, generation, hooks, sentence_utils
-from spe.localization import evaluation as loc_eval
+from spe.evaluation import localization as loc_eval
 from spe.prompt_utils import (
     build_messages,
     build_messages_from_turns,
@@ -25,104 +25,32 @@ from spe.prompt_utils import (
 )
 
 # ---------------------------------------------------------------------------
-# Localization (Exp 2): N sentence forced choice
+# Localization: which of two sentences was perturbed
 # ---------------------------------------------------------------------------
 
 
 def _validate_localization_config(cfg: omegaconf.DictConfig) -> None:
-    """Validate localization perturbation config fields.
-
-    Checks that background counts sum to num_sentences - 1 and that
-    the target perturbation type is not present in the background.
+    """Two sentences: one with the target perturbation, the other unperturbed.
 
     Raises:
-        ValueError: If the config is inconsistent.
+        ValueError: If the config asks for another shape.
     """
-    target = cfg.perturbation.target_perturbation
-    n = cfg.perturbation.num_sentences
-    num_bg_dropout = cfg.perturbation.get("num_bg_dropout", 0)
-    num_bg_noise = cfg.perturbation.get("num_bg_noise", 0)
-    num_bg_nothing = cfg.perturbation.get("num_bg_nothing", 0)
-    bg_total = num_bg_dropout + num_bg_noise + num_bg_nothing
-
-    if bg_total != n - 1:
-        raise ValueError(
-            f"Background counts must sum to num_sentences - 1 = {n - 1}, "
-            f"got num_bg_dropout={num_bg_dropout} + num_bg_noise={num_bg_noise} "
-            f"+ num_bg_nothing={num_bg_nothing} = {bg_total}"
-        )
-
-    # Target type must not appear in background
-    bg_counts = {
-        "DROPOUT": num_bg_dropout,
-        "NOISE": num_bg_noise,
-        "NOTHING": num_bg_nothing,
-    }
-    if bg_counts.get(target, 0) > 0:
-        raise ValueError(
-            f"Target perturbation '{target}' must not appear in background, "
-            f"but num_bg_{target.lower()}={bg_counts[target]}"
-        )
-
-
-def _assign_background_perturbations(
-    labels: list[str],
-    target_position: str,
-    num_bg_dropout: int,
-    num_bg_noise: int,
-    num_bg_nothing: int,
-) -> dict[str, str]:
-    """Assign perturbation types to background sentences.
-
-    Returns a dict mapping each label (excluding target_position)
-    to its perturbation type. The assignment is shuffled randomly.
-
-    Args:
-        labels: All sentence labels (e.g. ["A", "B", "C"]).
-        target_position: The label that receives the target perturbation.
-        num_bg_dropout: Number of background sentences that get DROPOUT.
-        num_bg_noise: Number of background sentences that get NOISE.
-        num_bg_nothing: Number of background sentences that get NOTHING.
-
-    Returns:
-        Dict mapping label -> perturbation type for background sentences.
-    """
-    bg_labels = [lbl for lbl in labels if lbl != target_position]
-    bg_types = (
-        ["DROPOUT"] * num_bg_dropout
-        + ["NOISE"] * num_bg_noise
-        + ["NOTHING"] * num_bg_nothing
+    p = cfg.perturbation
+    shape = (
+        p.num_sentences,
+        p.get("num_bg_dropout", 0),
+        p.get("num_bg_noise", 0),
+        p.get("num_bg_nothing", 0),
     )
-    random.shuffle(bg_types)
-    return dict(zip(bg_labels, bg_types, strict=False))
-
-
-def _build_perturbation_description(
-    target: str,
-    num_sentences: int,
-    num_bg_dropout: int,
-    num_bg_noise: int,
-    num_bg_nothing: int,
-) -> str:
-    """Build a human readable description of the perturbation setup.
-
-    Example: "DROPOUT has been applied to exactly one of the 3 sentences.
-    The remaining sentences were processed with NOISE and NOTHING."
-    """
-    parts = []
-    if num_bg_dropout > 0:
-        parts.append("DROPOUT")
-    if num_bg_noise > 0:
-        parts.append("NOISE")
-    if num_bg_nothing > 0:
-        parts.append("no perturbation (NOTHING)")
-
-    desc = f"{target} has been applied to exactly one of the {num_sentences} sentences."
-    if parts:
-        bg_str = " and ".join(parts)
-        desc += f" The remaining sentences were processed with {bg_str}."
-
-    return desc
+    if shape != (2, 0, 0, 1):
+        raise ValueError(
+            "Localization uses two sentences, one perturbed and one unperturbed: set num_sentences=2, "
+            f"num_bg_nothing=1, num_bg_dropout=num_bg_noise=0 (got {shape})."
+        )
+    if p.target_perturbation not in ("DROPOUT", "NOISE"):
+        raise ValueError(
+            f"target_perturbation must be DROPOUT or NOISE, got {p.target_perturbation!r}"
+        )
 
 
 def run_localization(
@@ -130,12 +58,10 @@ def run_localization(
     model: transformers.AutoModelForCausalLM,
     tokenizer: transformers.AutoTokenizer,
 ) -> tuple[dict, list]:
-    """Execute the localization (N way forced choice) experiment loop.
+    """Execute the localization experiment loop.
 
-    Supports configurable target perturbation and background composition.
-    The target perturbation is applied to exactly one sentence, and
-    background sentences receive their assigned perturbation types
-    (which can be any combination of DROPOUT, NOISE, and NOTHING).
+    The target perturbation is applied to one of the two sentences, chosen
+    at random for each sample; the other sentence is unperturbed.
 
     Args:
         cfg: Resolved Hydra config.
@@ -161,9 +87,7 @@ def run_localization(
 
     sentence_n_tokens = cfg.experiment.get("sentence_n_tokens", None)
     sentences_file = cfg.experiment.get("sentences_file", None)
-    hardcoded_sentences = (
-        list(cfg.prompts.turns.sentences) if "sentences" in cfg.prompts.turns else None
-    )
+    hardcoded_sentences: list[str] | None = None
 
     # Grouped sentences: a list of lists. One sentence is sampled from
     # each group, guaranteeing one per category (e.g. one animal, one
@@ -172,7 +96,7 @@ def run_localization(
     if "sentence_groups" in cfg.prompts.turns:
         sentence_groups = [list(g) for g in cfg.prompts.turns.sentence_groups]
 
-    # Priority: sentences_file > prompts.turns.sentences/sentence_groups > sentence_n_tokens
+    # Priority: sentences_file > sentence_groups (control prompts) > sentence_n_tokens (generator)
     if sentences_file is not None:
         with open(sentences_file) as f:
             hardcoded_sentences = [line.strip() for line in f if line.strip()]
@@ -183,8 +107,8 @@ def run_localization(
         and sentence_n_tokens is None
     ):
         raise ValueError(
-            "Set experiment.sentences_file, experiment.sentence_n_tokens, "
-            "or include sentences or sentence_groups in prompts.turns"
+            "Set experiment.sentences_file or experiment.sentence_n_tokens, "
+            "or use a control prompt with sentence_groups"
         )
     same_sentence = cfg.perturbation.get("same_sentence", False)
     num_samples = cfg.experiment.num_samples
@@ -199,11 +123,6 @@ def run_localization(
         )
 
     target_perturbation = cfg.perturbation.target_perturbation
-    num_bg_dropout = cfg.perturbation.get("num_bg_dropout", 0)
-    num_bg_noise = cfg.perturbation.get("num_bg_noise", 0)
-    num_bg_nothing = cfg.perturbation.get("num_bg_nothing", 0)
-    grounding_sentence = cfg.perturbation.get("grounding_sentence", None)
-    randomize_target = cfg.perturbation.get("randomize_target", False)
 
     # Resolve variant token IDs for each label
     variant_ids = {}
@@ -220,31 +139,16 @@ def run_localization(
         cfg.perturbation.last_layer,
     )
 
-    # Optional generic label for the prompt (e.g. "a perturbation" instead of "DROPOUT")
+    # Generic label for the prompt ("a perturbation"), so that it never names the perturbation
     prompt_label = cfg.perturbation.get("prompt_label", None)
-
-    # Build perturbation description for the prompt (fixed target only)
-    perturbation_description = ""
-    if not randomize_target:
-        label_for_prompt = prompt_label or target_perturbation
-        perturbation_description = _build_perturbation_description(
-            label_for_prompt,
-            num_sentences,
-            num_bg_dropout,
-            num_bg_noise,
-            num_bg_nothing,
-        )
 
     # --- Header ---
     print_agg = cfg.output.print_aggregates
-    header_target = (
-        "RANDOMIZED(DROPOUT/NOISE)" if randomize_target else target_perturbation
-    )
     _print_loc_header(
         num_samples,
         num_sentences,
         same_sentence,
-        header_target,
+        target_perturbation,
         cfg.perturbation.dropout_rate,
         cfg.perturbation.get("noise_std", 0.01),
         labels,
@@ -287,50 +191,18 @@ def run_localization(
                 rng=sentence_rng,
             )
         target_position = random.choice(labels)
+        position_to_type = {
+            lbl: target_perturbation if lbl == target_position else "NOTHING"
+            for lbl in labels
+        }
+        sample_target = target_perturbation
+        sample_ground_truth = target_position
 
-        # Assign background perturbations
-        bg_assignments = _assign_background_perturbations(
-            labels,
-            target_position,
-            num_bg_dropout,
-            num_bg_noise,
-            num_bg_nothing,
-        )
-
-        # Map each position to its actual perturbation type
-        position_to_type = {}
-        for lbl in labels:
-            if lbl == target_position:
-                position_to_type[lbl] = target_perturbation
-            else:
-                position_to_type[lbl] = bg_assignments[lbl]
-
-        if randomize_target:
-            sample_target = random.choice(list(set(position_to_type.values())))
-            sample_ground_truth = next(
-                lbl for lbl, pt in position_to_type.items() if pt == sample_target
-            )
-            bg_types = [pt for pt in position_to_type.values() if pt != sample_target]
-            sample_description = _build_perturbation_description(
-                sample_target,
-                num_sentences,
-                bg_types.count("DROPOUT"),
-                bg_types.count("NOISE"),
-                bg_types.count("NOTHING"),
-            )
-        else:
-            sample_target = target_perturbation
-            sample_ground_truth = target_position
-            sample_description = perturbation_description
-
-        prompt_target_name = prompt_label or sample_target
         format_kwargs = _build_format_kwargs(
             labels,
             sampled,
             num_sentences,
-            perturbation_description=sample_description,
-            target_perturbation_name=prompt_target_name,
-            grounding_sentence=grounding_sentence,
+            target_perturbation_name=prompt_label or sample_target,
         )
 
         # Sample prompt variant (or use default turns)
@@ -365,14 +237,9 @@ def run_localization(
         perturbation_entries: list[dict[str, typing.Any]] = []
         for lbl in labels:
             first_tok, last_tok = token_ranges[lbl]
-            if lbl == target_position:
-                ptype = target_perturbation
-            else:
-                ptype = bg_assignments[lbl]
-
             perturbation_entries.append(
                 {
-                    "type": ptype,
+                    "type": position_to_type[lbl],
                     "first_token": first_tok,
                     "last_token": last_tok,
                     "dropout_rate": cfg.perturbation.dropout_rate,
@@ -396,18 +263,16 @@ def run_localization(
 
         # Create hook(s) and run
         if dropout_style == "aiayn":
-            _response, logits, _token_id, _hidden_states = (
-                aiayn_hooks.run_single_sample_multi(
-                    model,
-                    tokenizer,
-                    messages,
-                    perturbation_entries=perturbation_entries,
-                    hook_target=cfg.perturbation.hook_target,
-                    first_layer=cfg.perturbation.first_layer,
-                    last_layer=cfg.perturbation.last_layer,
-                    aiayn_positions=aiayn_positions,
-                    enable_thinking=cfg.model.thinking,
-                )
+            _response, logits, _token_id = aiayn_hooks.run_single_sample_multi(
+                model,
+                tokenizer,
+                messages,
+                perturbation_entries=perturbation_entries,
+                hook_target=cfg.perturbation.hook_target,
+                first_layer=cfg.perturbation.first_layer,
+                last_layer=cfg.perturbation.last_layer,
+                aiayn_positions=aiayn_positions,
+                enable_thinking=cfg.model.thinking,
             )
             all_logits = None
         else:
@@ -420,7 +285,7 @@ def run_localization(
                 last_layer=cfg.perturbation.last_layer,
             )
             try:
-                _response, logits, _token_id, _hidden_states, all_logits = (
+                _response, logits, _token_id, all_logits = (
                     generation.generate_single_token(
                         model,
                         tokenizer,
@@ -466,19 +331,19 @@ def run_localization(
             label_probs[lbl] = sum(probs[tid].item() for tid in ids)
             label_logsumexp[lbl] = torch.logsumexp(logits[ids], dim=0).item()
 
-        # Compute primary token prob and logit for each label
+        # Compute primary token prob and logit for each label. The primary
+        # variant " L" must be a single token, otherwise the metric is meaningless.
+        label_primary_ids: dict[str, int] = {}
         label_primary_probs: dict[str, float] = {}
         label_primary_logits: dict[str, float] = {}
         for lbl in labels:
             primary_str = f" {lbl}"
-            primary_ids = generation.resolve_token_ids_safe(tokenizer, [primary_str])
-            if primary_str in primary_ids:
-                tid = primary_ids[primary_str]
-                label_primary_probs[lbl] = probs[tid].item()
-                label_primary_logits[lbl] = logits[tid].item()
-            else:
-                label_primary_probs[lbl] = 0.0
-                label_primary_logits[lbl] = float("-inf")
+            tid = generation.resolve_token_ids_safe(tokenizer, [primary_str])[
+                primary_str
+            ]
+            label_primary_ids[lbl] = tid
+            label_primary_probs[lbl] = probs[tid].item()
+            label_primary_logits[lbl] = logits[tid].item()
 
         predicted_aggregate = max(labels, key=lambda l: label_probs[l])
         predicted_primary = max(labels, key=lambda l: label_primary_logits[l])
@@ -488,12 +353,17 @@ def run_localization(
         top_logit = logits[top_token_id].item()
         top_prob = probs[top_token_id].item()
 
-        # Argmax prediction: map full-vocab argmax to a label (or OTHER)
+        # Argmax prediction: map full-vocab argmax to a label (or OTHER).
+        # ``predicted_argmax`` accepts any casing/space variant of the letter;
+        # ``predicted_argmax_primary`` only the primary variant " L".
         predicted_argmax = "OTHER"
         for lbl in labels:
             if top_token_id in variant_ids[lbl]:
                 predicted_argmax = lbl
                 break
+        predicted_argmax_primary = next(
+            (lbl for lbl in labels if top_token_id == label_primary_ids[lbl]), "OTHER"
+        )
 
         entropy = generation.entropy_from_logits(logits)
 
@@ -504,6 +374,11 @@ def run_localization(
             "predicted_aggregate": predicted_aggregate,
             "predicted_primary": predicted_primary,
             "predicted_argmax": predicted_argmax,
+            "predicted_argmax_primary": predicted_argmax_primary,
+            "argmax_token": top_token,
+            "argmax_token_id": top_token_id,
+            "argmax_logit": top_logit,
+            "argmax_prob": top_prob,
             "entropy": entropy,
             "same_sentence": same_sentence,
             "target_perturbation": sample_target,
@@ -538,31 +413,13 @@ def run_localization(
             )
             if lbl in sentence_log_probs:
                 row[f"sentence_log_prob_{lbl.lower()}"] = sentence_log_probs[lbl]
-            if lbl == target_position:
-                row[f"perturbation_{lbl.lower()}"] = target_perturbation.lower()
-            else:
-                row[f"perturbation_{lbl.lower()}"] = bg_assignments[lbl].lower()
+            row[f"perturbation_{lbl.lower()}"] = position_to_type[lbl].lower()
 
         # Per-perturbation-type log probabilities
         for lbl in labels:
             ptype = position_to_type[lbl].lower()
             row[f"primary_log_prob_{ptype}"] = label_primary_logits[lbl] - log_norm
             row[f"aggregate_log_prob_{ptype}"] = label_logsumexp[lbl] - log_norm
-
-        # Pairwise logit diff: DROPOUT vs NOISE positions
-        dropout_pos = next(
-            (lbl for lbl in labels if position_to_type[lbl] == "DROPOUT"), None
-        )
-        noise_pos = next(
-            (lbl for lbl in labels if position_to_type[lbl] == "NOISE"), None
-        )
-        if dropout_pos and noise_pos:
-            row["primary_logit_diff_dropout_vs_noise"] = (
-                label_primary_logits[dropout_pos] - label_primary_logits[noise_pos]
-            )
-            row["aggregate_logit_diff_dropout_vs_noise"] = (
-                label_logsumexp[dropout_pos] - label_logsumexp[noise_pos]
-            )
 
         # Logit diff: config target position vs logaddexp of all alternatives
         others_primary = [
@@ -576,10 +433,7 @@ def run_localization(
             np.logaddexp, others_lse
         )
 
-        # Logit diff: asked about position vs logaddexp of all alternatives.
-        # When randomize_target=false this equals logit_diff / logsumexp_diff.
-        # When randomize_target=true, sample_ground_truth follows the prompt
-        # direction (the position the model was asked to find).
+        # Logit diff: asked-about (perturbed) position vs the alternatives; equals logit_diff / logsumexp_diff.
         others_primary_corr = [
             label_primary_logits[lbl] for lbl in labels if lbl != sample_ground_truth
         ]
@@ -606,6 +460,18 @@ def run_localization(
         row["primary_log_one_minus_p_correct"] = np.log1p(-p_correct)
         p_correct_agg = label_probs[sample_ground_truth]
         row["aggregate_log_one_minus_p_correct"] = np.log1p(-p_correct_agg)
+
+        # Joint log-prob of the perturbed sentence vs. the unperturbed (NOTHING)
+        # sentence, both read off the same forward pass.
+        if len(sentence_log_probs) == len(labels):
+            perturbed_pos = next(l for l in labels if position_to_type[l] != "NOTHING")
+            unperturbed_pos = next(
+                l for l in labels if position_to_type[l] == "NOTHING"
+            )
+            perturbed_lp = sentence_log_probs[perturbed_pos]
+            unperturbed_lp = sentence_log_probs[unperturbed_pos]
+            row["perturbed_lp_lower"] = int(perturbed_lp < unperturbed_lp)
+            row["perturbed_unperturbed_logprob_delta"] = unperturbed_lp - perturbed_lp
 
         results.append(row)
 
@@ -635,10 +501,7 @@ def run_localization(
         dpi=cfg.output.dpi,
         fmt=cfg.output.format,
     )
-    if randomize_target:
-        metrics["target_perturbation"] = "RANDOMIZED_DROPOUT_NOISE"
-    else:
-        metrics["target_perturbation"] = target_perturbation
+    metrics["target_perturbation"] = target_perturbation
     return metrics, results
 
 
@@ -662,15 +525,10 @@ def _build_format_kwargs(
     labels: list[str],
     sampled: list[str],
     num_sentences: int,
-    perturbation_description: str = "",
     target_perturbation_name: str = "DROPOUT",
-    grounding_sentence: str | None = None,
 ) -> dict[str, str]:
     """Build the format_kwargs dict for prompt template substitution."""
     parts = [f"Sentence {lbl}: {s}" for lbl, s in zip(labels, sampled, strict=False)]
-    if grounding_sentence is not None:
-        # Insert unperturbed grounding text after the first sentence
-        parts.insert(1, grounding_sentence)
     sentences_block = "\n\n".join(parts)
     opts = [f'"the answer is: {lbl}"' for lbl in labels]
     answer_instruction = "Answer only " + ", ".join(opts[:-1]) + f", or {opts[-1]}."
@@ -679,7 +537,6 @@ def _build_format_kwargs(
         "sentences_block": sentences_block,
         "answer_instruction": answer_instruction,
         "num_sentences": str(num_sentences),
-        "perturbation_description": perturbation_description,
         "target_perturbation_name": target_perturbation_name,
     }
 

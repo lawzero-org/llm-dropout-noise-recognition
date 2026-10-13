@@ -1,0 +1,30 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# Yes/no controls of the yes/no detection sweep qwen3_14b/yesno_dropout.yaml (same model, perturbation and strengths): a neutral
+# prompt (read a sentence, answer a question) whose question has the answer NO (perturbed_ctrl_no), YES
+# (perturbed_ctrl_yes) or no answer (perturbed_ctrl_none, e.g. a coin flip). accuracy_primary is P(model answers YES).
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: qwen3_14b-yesno-ctrl-dropout
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_14b
+  experiment.stage:
+    value: yesno_ctrl
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    values: [classification/perturbed_ctrl_no, classification/perturbed_ctrl_yes, classification/perturbed_ctrl_none]
+  perturbation.active_perturbations:
+    value: "[DROPOUT]"
+  perturbation.noise_std:
+    value: 0
+  aliases:
+    value: dropout_yes
+  perturbation.dropout_rate:
+    values: [0, 0.1, 0.136, 0.172, 0.208, 0.244, 0.28, 0.316, 0.352, 0.388, 0.424, 0.46]

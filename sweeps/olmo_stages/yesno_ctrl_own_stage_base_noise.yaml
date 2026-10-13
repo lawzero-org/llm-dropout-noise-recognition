@@ -1,0 +1,29 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# OLMo BASE stage, yes/no controls (questions whose answer is NO, YES or undetermined) at the 11 strengths of its OWN range (0.01, 0.08) (bounds.py on the
+# stage's localization sweeps), instead of the RLVR range of yesno_ctrl_stage_base_noise.yaml; the unperturbed run is in that sweep.
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: olmo-stage-base-yesno-ctrl-noise-own-range
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: olmo3_32b_instruct_base
+  experiment.stage:
+    value: yesno_ctrl
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    values: [classification/perturbed_ctrl_no, classification/perturbed_ctrl_yes, classification/perturbed_ctrl_none]
+  perturbation.active_perturbations:
+    value: "[NOISE]"
+  perturbation.dropout_rate:
+    value: 0
+  aliases:
+    value: noise_yes
+  perturbation.noise_std:
+    values: [0.01, 0.017, 0.024, 0.031, 0.038, 0.045, 0.052, 0.059, 0.066, 0.073, 0.08]

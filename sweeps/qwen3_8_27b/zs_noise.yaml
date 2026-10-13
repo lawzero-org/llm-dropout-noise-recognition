@@ -1,0 +1,29 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --config-name classification --experiment multiclass.
+# Zero-shot classification (paper Sec. 5): single-class runs (NOISE only), so accuracy_primary is the
+# per-class recall P(model says the noise-mapped label | noise applied); 11 strengths over [min, max].
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: qwen3_8_27b-zs-noise
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_8_27b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: classification/main
+  perturbation.active_perturbations:
+    value: "[NOISE]"
+  perturbation.dropout_rate:
+    value: 0
+  aliases:
+    values: [none, dropout_noise, x_y, foo_bar, masking_jitter, rotation_permutation, scaling_translation, vanilla_chocolate, dropout_jitter, masking_noise, zeroing_gaussian, dropout_quantization, quantization_noise, suppression_injection, blanking_fuzzing, clipping_smoothing, steering_clamping, freezing_unfreezing, masking_quantization, quantization_jitter, dorvane_kenlo, bralto_sivek, quelp_frando, zinth_morble, 64726f706f7574_6e6f697365, tuopord_esion, beer_wine, pasta_pizza, plain_rich, still_sparkling, weak_strong, smooth_rough, light_dark, hot_cold, fast_slow, wet_dry, sharp_blunt, tall_short, ocean_mountain, fire_water, sun_moon, forest_desert, river_lake, jedi_sith, linux_windows, playstation_xbox, groudon_kyogre, stark_lannister, vim_emacs, mario_sonic, zelda_metroid, cat_dog, vampire_werewolf]
+  perturbation.noise_std:
+    values: [0.009, 0.0121, 0.0152, 0.0183, 0.0214, 0.0245, 0.0276, 0.0307, 0.0338, 0.0369, 0.04]

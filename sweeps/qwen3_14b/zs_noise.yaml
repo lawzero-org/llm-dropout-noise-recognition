@@ -1,0 +1,29 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --config-name classification --experiment multiclass.
+# Zero-shot classification (paper Sec. 5): single-class runs (NOISE only), so accuracy_primary is the
+# per-class recall P(model says the noise-mapped label | noise applied); 11 strengths over [min, max].
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: qwen3_14b-zs-noise
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_14b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: classification/main
+  perturbation.active_perturbations:
+    value: "[NOISE]"
+  perturbation.dropout_rate:
+    value: 0
+  aliases:
+    values: [none, dropout_noise, x_y, foo_bar, masking_jitter, rotation_permutation, scaling_translation, vanilla_chocolate]
+  perturbation.noise_std:
+    values: [0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1]

@@ -1,0 +1,30 @@
+# Function-agent sweep: run with spe-sweep --config-name classification --experiment multiclass.
+# Yes/no controls of the yes/no detection sweep seed_oss_36b/yesno_noise.yaml (same model, perturbation and strengths): a neutral
+# prompt (read a sentence, answer a question) whose question has the answer NO (perturbed_ctrl_no), YES
+# (perturbed_ctrl_yes) or no answer (perturbed_ctrl_none, e.g. a coin flip). accuracy_primary is P(model answers YES).
+project: llm-dropout-noise
+program: spe-classify
+method: grid
+name: seed_oss_36b-yesno-ctrl-noise
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: seed_oss_36b
+  experiment.stage:
+    value: yesno_ctrl
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    values: [classification/perturbed_ctrl_no, classification/perturbed_ctrl_yes, classification/perturbed_ctrl_none]
+  perturbation.active_perturbations:
+    value: "[NOISE]"
+  perturbation.dropout_rate:
+    value: 0
+  aliases:
+    value: noise_yes
+  perturbation.noise_std:
+    values: [0, 0.14, 0.153, 0.166, 0.179, 0.192, 0.205, 0.218, 0.231, 0.244, 0.257, 0.27]

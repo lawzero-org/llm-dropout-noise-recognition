@@ -1,4 +1,0 @@
-name: "google/gemma-3-1b-it"
-dtype: "bfloat16"
-device_map: "auto"
-thinking: false

@@ -5,7 +5,10 @@ multi-perturbation hook creation -> (mocked) generation -> per-label metric
 extraction -> result building, without loading a real model.
 """
 
+import math
+
 import pytest
+import torch
 from omegaconf import OmegaConf
 
 from spe.experiments.localization import run_localization
@@ -14,16 +17,9 @@ from spe.experiments.localization import run_localization
 # Config builder
 # ---------------------------------------------------------------------------
 
-_SENTENCES = [
-    "The cat sat quietly on the warm mat",
-    "A large dog ran through the green park",
-    "She walked along the beautiful sandy beach",
-    "The old library had many interesting books",
-    "He drove his car through the busy streets",
-]
-
 
 def _cfg(
+    sentences_file: str,
     num_samples: int = 4,
     num_sentences: int = 2,
     target_perturbation: str = "DROPOUT",
@@ -41,7 +37,6 @@ def _cfg(
                 "turns": {
                     "name": "test",
                     "prompt_pool": None,
-                    "sentences": _SENTENCES,
                     "turns": [
                         {
                             "role": "user",
@@ -81,7 +76,7 @@ def _cfg(
             "experiment": {
                 "seed": seed,
                 "num_samples": num_samples,
-                "sentences_file": None,
+                "sentences_file": sentences_file,
                 "sentence_n_tokens": None,
             },
         }
@@ -93,10 +88,10 @@ def _cfg(
 # ---------------------------------------------------------------------------
 
 
-def test_pipeline_runs(localization_mocks, tokenizer, fake_model):
+def test_pipeline_runs(localization_mocks, tokenizer, fake_model, sentences_file):
     """Smoke test: full localization pipeline completes with the right
     number of result rows."""
-    cfg = _cfg(num_samples=4)
+    cfg = _cfg(sentences_file, num_samples=4)
     metrics, results = run_localization(cfg, fake_model, tokenizer)
 
     assert isinstance(metrics, dict)
@@ -104,10 +99,12 @@ def test_pipeline_runs(localization_mocks, tokenizer, fake_model):
     assert len(results) == 4
 
 
-def test_result_row_structure(localization_mocks, tokenizer, fake_model):
+def test_result_row_structure(
+    localization_mocks, tokenizer, fake_model, sentences_file
+):
     """Each result row contains all expected label-level and aggregate
     metric keys."""
-    cfg = _cfg(num_samples=2)
+    cfg = _cfg(sentences_file, num_samples=2)
     _, results = run_localization(cfg, fake_model, tokenizer)
     row = results[0]
 
@@ -157,50 +154,82 @@ def test_ground_truth_position_varies(
     localization_mocks,
     tokenizer,
     fake_model,
+    sentences_file,
 ):
     """Target position is randomized across samples."""
-    cfg = _cfg(num_samples=20)
+    cfg = _cfg(sentences_file, num_samples=20)
     _, results = run_localization(cfg, fake_model, tokenizer)
 
     ground_truths = {r["ground_truth"] for r in results}
     assert len(ground_truths) > 1, "Expected target position to vary"
 
 
-def test_same_sentence_mode(localization_mocks, tokenizer, fake_model):
+def test_same_sentence_mode(localization_mocks, tokenizer, fake_model, sentences_file):
     """When ``same_sentence=True``, all sentences in a sample are identical."""
-    cfg = _cfg(num_samples=4, same_sentence=True)
+    cfg = _cfg(sentences_file, num_samples=4, same_sentence=True)
     _, results = run_localization(cfg, fake_model, tokenizer)
 
     for r in results:
         assert r["sentence_a"] == r["sentence_b"]
 
 
-def test_different_sentences_mode(localization_mocks, tokenizer, fake_model):
+def test_different_sentences_mode(
+    localization_mocks, tokenizer, fake_model, sentences_file
+):
     """When ``same_sentence=False``, sentences in a sample differ."""
-    cfg = _cfg(num_samples=4, same_sentence=False)
+    cfg = _cfg(sentences_file, num_samples=4, same_sentence=False)
     _, results = run_localization(cfg, fake_model, tokenizer)
 
     for r in results:
         assert r["sentence_a"] != r["sentence_b"]
 
 
-def test_invalid_background_counts_raises(tokenizer, fake_model):
-    """Background perturbation counts must sum to ``num_sentences - 1``."""
-    cfg = _cfg(
-        num_bg_dropout=1,
-        num_bg_noise=1,
-        num_bg_nothing=0,
-    )  # sums to 2, but num_sentences - 1 = 1
-    with pytest.raises(ValueError, match="Background counts must sum"):
+def test_other_shapes_raise(tokenizer, fake_model, sentences_file):
+    """Only the paper's shape is supported: two sentences, the other one unperturbed."""
+    cfg = _cfg(sentences_file, num_bg_dropout=1, num_bg_nothing=0)
+    with pytest.raises(ValueError, match="two sentences"):
         run_localization(cfg, fake_model, tokenizer)
 
 
-def test_target_in_background_raises(tokenizer, fake_model):
-    """Target perturbation type must not appear in the background."""
-    cfg = _cfg(
-        target_perturbation="DROPOUT",
-        num_bg_dropout=1,
-        num_bg_nothing=0,
-    )
-    with pytest.raises(ValueError, match="must not appear in background"):
-        run_localization(cfg, fake_model, tokenizer)
+def test_perturbed_logprob_metric(
+    tokenizer, fake_model, tmp_output_dir, monkeypatch, sentences_file
+):
+    """Joint log-prob comparison metric appears per row and in aggregate
+    metrics when ``all_logits`` is available."""
+    vocab_size = tokenizer.vocab_size
+
+    def _fake(model, tok, messages, enable_thinking=False, return_all_logits=False):
+        is_prefill = messages[-1]["role"] == "assistant"
+        text = tok.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=not is_prefill,
+            continue_final_message=is_prefill,
+        )
+        seq_len = len(tok(text).input_ids)
+        last_logits = torch.randn(vocab_size) * 0.1
+        ids = tok.encode(" A", add_special_tokens=False)
+        if ids:
+            last_logits[ids[0]] += 2.0
+        token_id = int(last_logits.argmax().item())
+        response = tok.decode([token_id], skip_special_tokens=True).strip()
+        all_logits = torch.randn(seq_len, vocab_size) * 0.1
+        return response, last_logits, token_id, all_logits
+
+    monkeypatch.setattr("spe.generation.generate_single_token", _fake)
+
+    cfg = _cfg(sentences_file, num_samples=4)
+    metrics, results = run_localization(cfg, fake_model, tokenizer)
+
+    for r in results:
+        assert r["perturbed_lp_lower"] in (0, 1)
+        assert math.isfinite(r["perturbed_unperturbed_logprob_delta"])
+        # Sign consistency: delta > 0 iff perturbed is the lower one.
+        assert (r["perturbed_unperturbed_logprob_delta"] > 0) == (
+            r["perturbed_lp_lower"] == 1
+        )
+
+    assert 0.0 <= metrics["perturbed_lp_lower_rate"] <= 1.0
+    assert metrics["perturbed_lp_lower_se"] >= 0.0
+    assert math.isfinite(metrics["perturbed_unperturbed_logprob_delta_mean"])
+    assert metrics["perturbed_unperturbed_logprob_delta_std"] >= 0.0

@@ -1,0 +1,9 @@
+# unsloth mirror of mistralai/Mistral-Small-3.2-24B-Instruct-2506: identical
+# bf16 weights but standard HF tokenizer files (the official repo ships only
+# tekken.json, whose MistralCommonBackend cannot return offset mappings).
+name: "unsloth/Mistral-Small-3.2-24B-Instruct-2506"
+revision: "3ed8d341b53ea3d0e4194689905477688a6cf733"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false
+auto_class: image_text_to_text

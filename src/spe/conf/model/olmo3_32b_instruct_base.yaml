@@ -1,0 +1,5 @@
+name: "allenai/Olmo-3-1125-32B"
+revision: "c2b61dae89a1ad10e4ad5653d0e46b590902607b"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false

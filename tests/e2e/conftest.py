@@ -6,7 +6,6 @@ All fixtures that mock model inference live here so test files only need
 to request the composite fixtures (``classification_mocks``, etc.).
 """
 
-import random
 from unittest.mock import patch
 
 import matplotlib
@@ -68,8 +67,8 @@ class FakeModel(torch.nn.Module):
 def _make_fake_generate(tokenizer_obj: AutoTokenizer):
     """Return a replacement for ``generation.generate_single_token``.
 
-    Produces structurally valid outputs (logits of the right vocab size,
-    hidden states tuple, etc.) without running a real model forward pass.
+    Produces structurally valid outputs (logits of the right vocab size)
+    without running a real model forward pass.
     """
     vocab_size = tokenizer_obj.vocab_size  # type: ignore[attr-defined]
 
@@ -81,29 +80,9 @@ def _make_fake_generate(tokenizer_obj: AutoTokenizer):
             logits[ids[0]] += 2.0
         token_id = int(logits.argmax().item())
         response = tok.decode([token_id], skip_special_tokens=True).strip()
-        hidden_states = tuple(
-            torch.randn(HIDDEN_DIM) for _ in range(NUM_FAKE_LAYERS + 1)
-        )
-        return response, logits, token_id, hidden_states, None
+        return response, logits, token_id, None
 
     return _fake
-
-
-def _make_fake_logit_lens():
-    """Return a replacement for ``logit_lens.compute_logit_lens``."""
-
-    def _fake(model, hidden_states, variant_token_ids, labels):
-        return [
-            {f"primary_logit_{l}": random.random() for l in labels}
-            for _ in range(NUM_FAKE_LAYERS)
-        ]
-
-    return _fake
-
-
-# ---------------------------------------------------------------------------
-# Shared fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
@@ -154,16 +133,6 @@ def mock_generate(tokenizer):
 
 
 @pytest.fixture
-def mock_logit_lens():
-    """Patch ``logit_lens.compute_logit_lens`` with a fake."""
-    with patch(
-        "spe.logit_lens.compute_logit_lens",
-        side_effect=_make_fake_logit_lens(),
-    ):
-        yield
-
-
-@pytest.fixture
 def tmp_output_dir(monkeypatch, tmp_path):
     """Change to a temporary directory so evaluation plot files are written there."""
     monkeypatch.chdir(tmp_path)
@@ -175,7 +144,7 @@ def tmp_output_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def classification_mocks(mock_generate, mock_logit_lens, tmp_output_dir):
+def classification_mocks(mock_generate, tmp_output_dir):
     """All mocks needed by the classification experiment."""
 
 

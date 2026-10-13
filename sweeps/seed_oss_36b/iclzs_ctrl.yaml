@@ -1,0 +1,64 @@
+# Few-shot classification (paper Sec. 6), prompt icl/main_zs (the zero-shot prompt plus teaching pairs): alias controls (paper Fig. 6): k=1, correct AND swapped labels, 3 aliases.
+# 11 x 11 (p, sigma) grid = the zero-shot strengths, prompts/turns=icl/main_zs, system prompt empty.
+# 726 runs. Agent: scripts/sweep_agents.sh with EXPERIMENT=icl,CONFIG_NAME=icl.
+project: llm-dropout-noise
+program: spe-icl
+method: grid
+name: seed_oss_36b-iclzs-ctrl
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: seed_oss_36b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: icl/main_zs
+  prompts/system:
+    value: empty
+  prompts.turns.same_sentence:
+    value: false
+  prompts.turns.same_pair_sentence:
+    value: true
+  prompts.turns.swap_labels:
+    values:
+    - false
+    - true
+  aliases:
+    values:
+    - masking_jitter
+    - x_y
+    - rotation_permutation
+  prompts.turns.num_pairs:
+    value: 1
+  perturbation.dropout_rate:
+    values:
+    - 0.36
+    - 0.41
+    - 0.46
+    - 0.51
+    - 0.56
+    - 0.61
+    - 0.66
+    - 0.71
+    - 0.76
+    - 0.81
+    - 0.86
+  perturbation.noise_std:
+    values:
+    - 0.14
+    - 0.153
+    - 0.166
+    - 0.179
+    - 0.192
+    - 0.205
+    - 0.218
+    - 0.231
+    - 0.244
+    - 0.257
+    - 0.27

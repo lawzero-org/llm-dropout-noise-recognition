@@ -1,0 +1,21 @@
+# Function-agent sweep: all dims in `parameters`; run with spe-sweep --experiment localization.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: llama3_8b-loc-noise-fine2
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: llama3_8b
+  experiment.stage:
+    value: fine2
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  perturbation.target_perturbation:
+    value: NOISE
+  perturbation.noise_std:
+    values: [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009]

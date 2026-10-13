@@ -32,74 +32,14 @@ def entropy_from_logits(logits: torch.Tensor) -> float:
     return -(log_probs.exp() * log_probs).sum().item()
 
 
-def compute_turn_start_token(
-    tokenizer: transformers.AutoTokenizer,
-    messages: list[dict[str, str]],
-    turn_index: int,
-    enable_thinking: bool = False,
-) -> int:
-    """Compute the token position where a specific turn starts.
-
-    ``turn_index`` refers to ``cfg.prompts.turns.turns`` (0 = first user
-    turn, 1 = assistant "Ok.", etc.).  In the ``messages`` list, that
-    corresponds to index ``turn_index + 1`` because ``messages[0]`` is
-    the system prompt.
-
-    The tokenization path mirrors ``generate_single_token()`` exactly
-    (same ``tokenizer()`` call, same ``enable_thinking``) so that token
-    indices are consistent between boundary computation and generation.
-
-    Args:
-        tokenizer: The tokenizer (must support ``apply_chat_template``).
-        messages: Full chat message list (system + all turns).
-        turn_index: Index into the turns list (excluding system prompt).
-            Must satisfy ``0 <= turn_index < len(messages) - 1``.
-        enable_thinking: Must match the value passed to
-            ``generate_single_token()``.
-
-    Returns:
-        Token index where the target turn begins.
-
-    Raises:
-        TypeError: If ``turn_index`` is not an int.
-        ValueError: If ``turn_index`` is out of range.
-    """
-    if not isinstance(turn_index, int):
-        raise TypeError(
-            f"turn_index must be an int, got {type(turn_index).__name__}: {turn_index}"
-        )
-
-    num_turns = len(messages) - 1  # messages[0] is system prompt
-    if turn_index < 0 or turn_index >= num_turns:
-        raise ValueError(
-            f"turn_index={turn_index} is out of range. "
-            f"Valid range: 0..{num_turns - 1} (messages has {len(messages)} entries, "
-            f"first is system prompt, remaining {num_turns} are turns)."
-        )
-
-    # Partial = system prompt + all turns before the target turn.
-    # messages[0] is system, messages[1] is turns[0], ..., so
-    # messages[:turn_index + 1] gives system + turns[0..turn_index-1].
-    partial = messages[: turn_index + 1]
-
-    text = tokenizer.apply_chat_template(  # type: ignore[attr-defined]
-        partial,
-        tokenize=False,
-        add_generation_prompt=False,
-        enable_thinking=enable_thinking,
-    )
-    inputs = tokenizer(text, return_tensors="pt")  # type: ignore[call-overload]
-    return int(inputs.input_ids.shape[1])
-
-
 def generate_single_token(
     model: transformers.AutoModelForCausalLM,
     tokenizer: transformers.AutoTokenizer,
     messages: list[dict[str, str]],
     enable_thinking: bool = False,
     return_all_logits: bool = False,
-) -> tuple[str, torch.Tensor, int, tuple[torch.Tensor, ...], torch.Tensor | None]:
-    """Generate exactly one token and return the decoded text, logits, token id, and hidden states.
+) -> tuple[str, torch.Tensor, int, torch.Tensor | None]:
+    """Generate exactly one token and return the decoded text, logits and token id.
 
     Args:
         model: The causal language model.
@@ -114,12 +54,9 @@ def generate_single_token(
             to compute per token log probabilities for sentence ranges.
 
     Returns:
-        Tuple of (decoded_response, first_token_logits, generated_token_id,
-        hidden_states, all_logits).
+        Tuple of (decoded_response, first_token_logits, generated_token_id, all_logits).
         ``first_token_logits`` has shape ``[vocab_size]``.
         ``generated_token_id`` is the vocabulary index of the token the model produced.
-        ``hidden_states`` is a tuple of ``num_layers + 1`` tensors of shape ``[hidden_dim]``
-        (last token position only; index 0 is the embedding output).
         ``all_logits`` is ``None`` unless ``return_all_logits=True``.
     """
     is_prefill = messages[-1]["role"] == "assistant"
@@ -134,19 +71,17 @@ def generate_single_token(
     inputs = tokenizer(text, return_tensors="pt").to(model.device)  # type: ignore[call-overload, attr-defined]
 
     with torch.no_grad():
-        outputs = model(**inputs, output_hidden_states=True)  # type: ignore[call-overload]
+        outputs = model(**inputs)  # type: ignore[call-overload]
 
     last_pos_logits = outputs.logits[0, -1, :]  # [vocab_size]
     generated_token_id = int(last_pos_logits.argmax().item())
     response = tokenizer.decode([generated_token_id], skip_special_tokens=True)  # type: ignore[attr-defined]
-    hidden_states = tuple(hs[0, -1, :] for hs in outputs.hidden_states)
     all_logits = outputs.logits[0] if return_all_logits else None
 
     return (
         response.strip(),
         last_pos_logits,
         generated_token_id,
-        hidden_states,
         all_logits,
     )
 
@@ -289,13 +224,11 @@ def extract_n_letter_variant_data(
         )
         data[f"logsumexp_{letter}"] = logsumexp_letter
 
-        if primary in variant_token_ids:
-            tid = variant_token_ids[primary]
-            data[f"primary_prob_{letter}"] = probs[tid].item()
-            data[f"primary_logit_{letter}"] = logits[tid].item()
-        else:
-            data[f"primary_prob_{letter}"] = 0.0
-            data[f"primary_logit_{letter}"] = float("-inf")
+        # The primary variant " L" must be a single token, otherwise the
+        # primary metrics are meaningless: fail loudly (KeyError).
+        tid = variant_token_ids[primary]
+        data[f"primary_prob_{letter}"] = probs[tid].item()
+        data[f"primary_logit_{letter}"] = logits[tid].item()
 
         # Log-probabilities: logit - logsumexp(all vocab) = log P(token)
         data[f"primary_log_prob_{letter}"] = data[f"primary_logit_{letter}"] - log_norm

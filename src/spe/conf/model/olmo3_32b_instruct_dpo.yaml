@@ -1,0 +1,5 @@
+name: "allenai/Olmo-3.1-32B-Instruct-DPO"
+revision: "fc84a4f699916fcf585aa54371f47897fa934d5c"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false

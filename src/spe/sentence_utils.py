@@ -1,9 +1,4 @@
-"""Shared sentence sampling and generation utilities.
-
-Provides a single function that handles both pre-built sentence pools
-and dynamic generation, unifying logic previously duplicated across
-localization and ICL experiment files.
-"""
+"""Shared sentence sampling: from a pre-built sentence pool or the sentence generator."""
 
 import random
 

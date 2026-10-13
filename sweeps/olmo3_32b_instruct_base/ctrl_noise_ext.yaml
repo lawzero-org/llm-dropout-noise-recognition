@@ -1,0 +1,24 @@
+# Localization bounds of the OLMo BASE stage (Table 1 rule): same grid as sweeps/olmo3_32b/ctrl_noise_ext.yaml,
+# model olmo3_32b_instruct_base. Function-agent sweep: run with spe-sweep --config-name localization --experiment localization.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: olmo-stage-base-ctrl-noise-ext
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: olmo3_32b_instruct_base
+  experiment.stage:
+    value: ext
+  experiment.num_samples:
+    value: 1000
+  perturbation.target_perturbation:
+    value: NOISE
+  perturbation.same_sentence:
+    value: false
+  prompts/turns:
+    values: ['localization/control_topic_animals_cities', 'localization/control_topic_ocean_mountain', 'localization/control_topic_sports_music', 'localization/control_topic_weather_technology', 'localization/control_topic_gardening_vehicles']
+  perturbation.noise_std:
+    values: [0.52, 0.54, 0.56, 0.58, 0.6, 0.62, 0.64, 0.66, 0.68, 0.7]

@@ -1,6 +1,0 @@
-display_names:
-  DROPOUT: "JITTER"
-  NOISE: "QUANTIZATION"
-descriptions:
-  DROPOUT: "(activation jittering)"
-  NOISE: "(weight precision reduction)"

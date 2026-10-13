@@ -1,0 +1,5 @@
+name: "allenai/Olmo-3.1-32B-Instruct-SFT"
+revision: "152782ecc41a86c5cbe3fb6afa68bd90934de48a"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false

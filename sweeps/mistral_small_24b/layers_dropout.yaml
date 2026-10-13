@@ -1,0 +1,16 @@
+# Layer ablation: one third of the 40 layers perturbed; strengths = the 11 bins of Table 1.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: mistral_small_24b-layers-dropout
+metric: {name: accuracy_primary, goal: maximize}
+parameters:
+  model: {value: mistral_small_24b}
+  experiment.stage: {value: layers}
+  experiment.num_samples: {value: 1000}
+  hydra_overrides:
+    values: [perturbation.first_layer=0 perturbation.last_layer=12, perturbation.first_layer=13 perturbation.last_layer=26, perturbation.first_layer=27 perturbation.last_layer=39]
+  experiment.sentences_file: {value: data/sentences/15tok.txt}
+  perturbation.target_perturbation: {value: DROPOUT}
+  perturbation.dropout_rate:
+    values: [0.1, 0.142, 0.184, 0.226, 0.268, 0.31, 0.352, 0.394, 0.436, 0.478, 0.52]

@@ -1,0 +1,32 @@
+# Prompt ablation of Sec. 4: localization/main reduced to one user turn (the two sentences and the question) and the
+# prefill; no announcement of the perturbations, no request to attend to the processing, no introspection turn.
+name: localization/main_bare
+prompt_pool:
+- localization/main_bare_variants/v00
+- localization/main_bare_variants/v01
+- localization/main_bare_variants/v02
+- localization/main_bare_variants/v03
+- localization/main_bare_variants/v04
+- localization/main_bare_variants/v05
+- localization/main_bare_variants/v06
+- localization/main_bare_variants/v07
+- localization/main_bare_variants/v08
+- localization/main_bare_variants/v09
+- localization/main_bare_variants/v10
+- localization/main_bare_variants/v11
+- localization/main_bare_variants/v12
+- localization/main_bare_variants/v13
+- localization/main_bare_variants/v14
+- localization/main_bare_variants/v15
+- localization/main_bare_variants/v16
+- localization/main_bare_variants/v17
+- localization/main_bare_variants/v18
+- localization/main_bare_variants/v19
+turns:
+- role: user
+  content: '{sentences_block}
+
+
+    Based on your introspection, which sentence had {target_perturbation_name} applied to its processing? {answer_instruction}'
+- role: assistant
+  content: 'the answer is:'

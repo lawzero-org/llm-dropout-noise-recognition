@@ -1,0 +1,5 @@
+name: "ByteDance-Seed/Seed-OSS-36B-Instruct"
+revision: "497f1dca95ebdec98e41d517b9f060ee753c902f"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false

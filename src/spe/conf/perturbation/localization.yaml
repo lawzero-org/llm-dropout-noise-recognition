@@ -10,6 +10,8 @@ noise_std: 0.01
 hook_target: "both"
 first_layer: 0
 last_layer: -1
+# first_token / last_token: not read by the code; kept because the hashed seed of every paper run
+# includes them (removing a key changes the resolved config, hence the seed).
 first_token: 0
 last_token: -1
 same_sentence: true

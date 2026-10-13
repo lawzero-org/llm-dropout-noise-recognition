@@ -1,0 +1,5 @@
+name: "google/gemma-4-31B-it"
+revision: "3548789868c5356dbf307c98e6f609007b82b3eb"  # pinned revision
+dtype: "bfloat16"
+device_map: "auto"
+thinking: false

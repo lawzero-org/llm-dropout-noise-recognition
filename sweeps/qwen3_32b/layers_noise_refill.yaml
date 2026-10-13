@@ -1,0 +1,14 @@
+# Refill of layers_noise: one run finished with an empty W&B summary; same resolved config -> same hashed seed.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: qwen3_32b-layers-noise-refill
+metric: {name: accuracy_primary, goal: maximize}
+parameters:
+  model: {value: qwen3_32b}
+  experiment.stage: {value: layers}
+  experiment.num_samples: {value: 1000}
+  experiment.sentences_file: {value: data/sentences/15tok.txt}
+  perturbation.target_perturbation: {value: NOISE}
+  hydra_overrides:
+    values: [perturbation.first_layer=21 perturbation.last_layer=42 perturbation.noise_std=0.172]

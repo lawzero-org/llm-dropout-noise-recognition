@@ -1,0 +1,64 @@
+# Few-shot classification (paper Sec. 6), prompt icl/main_zs (the zero-shot prompt plus teaching pairs): swapped-label arm: teaching pairs carry the wrong label, k in {1,3,5,7,9}.
+# 11 x 11 (p, sigma) grid = the zero-shot strengths, prompts/turns=icl/main_zs, system prompt empty.
+# 605 runs. Agent: scripts/sweep_agents.sh with EXPERIMENT=icl,CONFIG_NAME=icl.
+project: llm-dropout-noise
+program: spe-icl
+method: grid
+name: qwen3_32b-iclzs-swap
+metric:
+  name: accuracy_primary
+  goal: maximize
+parameters:
+  model:
+    value: qwen3_32b
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  experiment.sentences_file:
+    value: data/sentences/15tok.txt
+  prompts/turns:
+    value: icl/main_zs
+  prompts/system:
+    value: empty
+  prompts.turns.same_sentence:
+    value: false
+  prompts.turns.same_pair_sentence:
+    value: true
+  prompts.turns.swap_labels:
+    value: true
+  aliases:
+    value: none
+  prompts.turns.num_pairs:
+    values:
+    - 1
+    - 3
+    - 5
+    - 7
+    - 9
+  perturbation.dropout_rate:
+    values:
+    - 0.18
+    - 0.216
+    - 0.252
+    - 0.288
+    - 0.324
+    - 0.36
+    - 0.396
+    - 0.432
+    - 0.468
+    - 0.504
+    - 0.54
+  perturbation.noise_std:
+    values:
+    - 0.1
+    - 0.112
+    - 0.124
+    - 0.136
+    - 0.148
+    - 0.16
+    - 0.172
+    - 0.184
+    - 0.196
+    - 0.208
+    - 0.22

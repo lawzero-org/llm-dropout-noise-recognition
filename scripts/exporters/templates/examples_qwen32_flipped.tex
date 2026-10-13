@@ -1,0 +1,19 @@
+%% Layout of a paper figure, filled by scripts/exporters/export_paper_figs.py: every %%PLOTS%% line is replaced by the
+%% plots of one axis, in order. Lines starting with %% are dropped from the output.
+\centering
+{\scriptsize
+\hspace{2em}\tikz\draw[blue!70!black, thick, mark=o, mark size=1.5] plot coordinates {(0,0) (0.4,0)}; correct labels\hspace{1em}%
+\tikz\draw[blue!70!black, mark=o, mark size=1] plot coordinates {(0,0) (0.4,0)}; flipped labels
+}\\[4pt]
+\begin{tikzpicture}
+\begin{axis}[
+    width=\linewidth,
+    height=7cm,
+    grid=major,
+    xlabel={\small Num of teaching pairs},
+    ylabel={\small Accuracy (\%)},
+    xtick={0,1,3,5,7,9},
+]
+%%PLOTS%%
+\end{axis}
+\end{tikzpicture}

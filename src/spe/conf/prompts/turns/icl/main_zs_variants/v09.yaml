@@ -1,0 +1,27 @@
+# Mirror of classification/main_variants/v09 for ICL (see icl/main_zs.yaml).
+name: icl/main_zs_variants/v09
+labels:
+- A
+- B
+class_names:
+- DROPOUT
+- NOISE
+intro_user: >-
+  I will apply perturbations; your task is to detect which perturbation was applied.{examples_intro}
+intro_assistant: I understand. I will pay close attention.
+sentence_user: >-
+  Pay close attention to how you process the following sentence: "{sentence}"
+label_assistant: >-
+  I am carefully introspecting on how I processed that sentence. That was {label}.
+test_user: >-
+  Pay close attention to how you process the following sentence: "{sentence}"
+test_assistant: >-
+  I am carefully introspecting on how I processed that sentence. I am determining which perturbation was
+  applied.
+question_user: >-
+  Based on your introspection, which of the following best describes what happened{question_scope}?
+
+  A) {option_a} B) {option_b}
+
+  Answer only "the answer is: A" or "the answer is: B".
+answer_prefill: 'the answer is:'

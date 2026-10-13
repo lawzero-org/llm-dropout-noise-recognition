@@ -1,0 +1,72 @@
+# ICL prompt that is word-for-word the zero-shot prompt (classification/main) with the teaching block inserted
+# between the acknowledgement and the test sentence. At k=0 (num_pairs: 0) the conversation is identical to the
+# zero-shot one: ``{examples_intro}`` and ``{question_scope}`` render empty (see experiments/icl.py). Use with
+# ``prompts/system: empty`` (the zero-shot system prompt); the 20 variants mirror classification/main_variants.
+# Teaching pair = the zero-shot sentence turn + the first sentence of its introspection turn + "That was <label>."
+name: icl/main_zs
+labels:
+- A
+- B
+class_names:
+- DROPOUT
+- NOISE
+intro_user: >-
+  I will apply perturbations; your task is to detect which perturbation was applied.{examples_intro}
+intro_assistant: I understand. I will pay close attention.
+sentence_user: >-
+  Pay close attention to how you process the following sentence: "{sentence}"
+label_assistant: >-
+  I am carefully introspecting on how I processed that sentence. That was {label}.
+test_user: >-
+  Pay close attention to how you process the following sentence: "{sentence}"
+test_assistant: >-
+  I am carefully introspecting on how I processed that sentence. I am understanding which perturbation
+  was applied.
+question_user: >-
+  Based on your introspection, which of the following best describes what happened{question_scope}?
+
+  A) {option_a} B) {option_b}
+
+  Answer only "the answer is: A" or "the answer is: B".
+answer_prefill: 'the answer is:'
+prompt_pool:
+- icl/main_zs_variants/v00
+- icl/main_zs_variants/v01
+- icl/main_zs_variants/v02
+- icl/main_zs_variants/v03
+- icl/main_zs_variants/v04
+- icl/main_zs_variants/v05
+- icl/main_zs_variants/v06
+- icl/main_zs_variants/v07
+- icl/main_zs_variants/v08
+- icl/main_zs_variants/v09
+- icl/main_zs_variants/v10
+- icl/main_zs_variants/v11
+- icl/main_zs_variants/v12
+- icl/main_zs_variants/v13
+- icl/main_zs_variants/v14
+- icl/main_zs_variants/v15
+- icl/main_zs_variants/v16
+- icl/main_zs_variants/v17
+- icl/main_zs_variants/v18
+- icl/main_zs_variants/v19
+description_pool:
+  DROPOUT:
+  - (random neuron dropping)
+  - (random neuron zeroing)
+  - (sparse activation masking)
+  NOISE:
+  - (gaussian noise injection)
+  - (random noise addition)
+  - (additive gaussian perturbation)
+num_pairs: 2
+# teaching_schedule / empty_teaching / random_labels are not read by the code; they stay because the hashed seed of
+# every paper run includes them (removing a key changes the resolved config, hence the seed).
+teaching_schedule: null
+same_sentence: true
+same_pair_sentence: false
+swap_labels: false
+empty_teaching: false
+random_labels: false
+examples_intro: I will first show you {n} labeled examples.
+question_scope: ' to the last sentence'

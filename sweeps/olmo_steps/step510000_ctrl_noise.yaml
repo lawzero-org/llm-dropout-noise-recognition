@@ -1,0 +1,33 @@
+# OLMo pretraining-steps content baseline at checkpoint stage1-step510000: 5 topic-pair comprehension controls x 3 strengths (min/mid/max). 15 runs.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: olmo-step510000-ctrl-noise
+metric:
+  name: accuracy_constrained_primary
+  goal: maximize
+parameters:
+  model:
+    value: olmo3_32b_instruct_base
+  model.revision:
+    value: stage1-step510000
+  experiment.stage:
+    value: coarse
+  experiment.num_samples:
+    value: 1000
+  perturbation.target_perturbation:
+    value: NOISE
+  perturbation.same_sentence:
+    value: false
+  prompts/turns:
+    values:
+    - localization/control_topic_animals_cities
+    - localization/control_topic_ocean_mountain
+    - localization/control_topic_sports_music
+    - localization/control_topic_weather_technology
+    - localization/control_topic_gardening_vehicles
+  perturbation.noise_std:
+    values:
+    - 0.02
+    - 0.05
+    - 0.08

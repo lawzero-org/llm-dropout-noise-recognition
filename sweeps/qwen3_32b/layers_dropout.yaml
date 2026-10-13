@@ -1,0 +1,16 @@
+# Layer ablation: one third of the 64 layers perturbed; strengths = the 11 bins of Table 1.
+project: llm-dropout-noise
+program: spe-localize
+method: grid
+name: qwen3_32b-layers-dropout
+metric: {name: accuracy_primary, goal: maximize}
+parameters:
+  model: {value: qwen3_32b}
+  experiment.stage: {value: layers}
+  experiment.num_samples: {value: 1000}
+  hydra_overrides:
+    values: [perturbation.first_layer=0 perturbation.last_layer=20, perturbation.first_layer=21 perturbation.last_layer=42, perturbation.first_layer=43 perturbation.last_layer=63]
+  experiment.sentences_file: {value: data/sentences/15tok.txt}
+  perturbation.target_perturbation: {value: DROPOUT}
+  perturbation.dropout_rate:
+    values: [0.18, 0.216, 0.252, 0.288, 0.324, 0.36, 0.396, 0.432, 0.468, 0.504, 0.54]

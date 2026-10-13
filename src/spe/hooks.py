@@ -189,6 +189,12 @@ def _get_layer_modules(model: ModelType) -> torch.nn.ModuleList:
     """
     if hasattr(model, "model") and hasattr(model.model, "layers"):  # type: ignore[attr-defined]
         return model.model.layers  # type: ignore[attr-defined]
+    if (  # Gemma 4 multimodal: top.model.language_model.layers
+        hasattr(model, "model")
+        and hasattr(model.model, "language_model")  # type: ignore[attr-defined]
+        and hasattr(model.model.language_model, "layers")  # type: ignore[attr-defined]
+    ):
+        return model.model.language_model.layers  # type: ignore[attr-defined]
     if hasattr(model, "layers"):
         return model.layers  # type: ignore[attr-defined]
     raise ValueError("Could not find layer modules in model")
@@ -254,9 +260,7 @@ def register_hooks(
 ) -> list[torch.utils.hooks.RemovableHandle]:
     """Register a forward hook on attention and/or MLP sub layers.
 
-    This is the unified replacement for the old ``register_dropout_hooks``
-    and ``register_noise_hooks``.  The caller decides which hook function
-    to pass in.
+    The caller decides which hook function (dropout, noise, compound) to pass in.
 
     Args:
         model: The transformer model.
@@ -289,8 +293,20 @@ def register_hooks(
     for i, layer in enumerate(layer_modules):
         if i < resolved_first or i >= end:
             continue
+        # Gemma 2/3/4 and OLMo 2/3 apply an extra RMSNorm to the sub-layer
+        # output before adding it to the residual stream (detected by
+        # post_feedforward_layernorm). Hooking the raw
+        # self_attn / mlp output would have its magnitude normalized
+        # away. Hook the post-norm output instead so the perturbation
+        # lands on the actual contribution to the residual — matching
+        # the effective perturbation site in standard pre-norm models.
+        gemma_style = hasattr(layer, "post_feedforward_layernorm")
         if target in ("attn", "both"):
-            if hasattr(layer, "self_attn"):
+            if gemma_style:
+                handles.append(
+                    layer.post_attention_layernorm.register_forward_hook(hook_fn)  # type: ignore[attr-defined]
+                )
+            elif hasattr(layer, "self_attn"):
                 handles.append(layer.self_attn.register_forward_hook(hook_fn))  # type: ignore[attr-defined]
             elif hasattr(layer, "linear_attn"):
                 handles.append(layer.linear_attn.register_forward_hook(hook_fn))  # type: ignore[attr-defined]
@@ -300,11 +316,16 @@ def register_hooks(
                     f"(expected 'self_attn' or 'linear_attn')"
                 )
         if target in ("mlp", "both"):
-            if not hasattr(layer, "mlp"):
+            if gemma_style:
+                handles.append(
+                    layer.post_feedforward_layernorm.register_forward_hook(hook_fn)  # type: ignore[attr-defined]
+                )
+            elif hasattr(layer, "mlp"):
+                handles.append(layer.mlp.register_forward_hook(hook_fn))  # type: ignore[attr-defined]
+            else:
                 raise AttributeError(
                     f"Layer {i} ({type(layer).__name__}) has no 'mlp' submodule"
                 )
-            handles.append(layer.mlp.register_forward_hook(hook_fn))  # type: ignore[attr-defined]
 
     return handles
 
